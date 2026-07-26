@@ -22,15 +22,40 @@ import { checkChatRequest } from "./rate-limit";
 const COOKIE = "admin_session";
 const SESSION_DAYS = 30;
 
-// The server runs on Bun (argon2id built in); src/'s tsconfig doesn't load
-// bun types, so declare the slice we use. Only referenced inside handlers,
-// which never execute client-side.
-declare const Bun: {
-  password: {
-    hash(password: string, options?: { algorithm?: "argon2id" | "bcrypt" }): Promise<string>;
-    verify(password: string, hash: string): Promise<boolean>;
-  };
-};
+// Production runs on Bun (argon2id built in), but `vite dev` runs under Node
+// where the Bun global doesn't exist — so fall back to @node-rs/argon2 there.
+// src/'s tsconfig doesn't load bun types, so declare the slice we use. Only
+// referenced inside handlers, which never execute client-side.
+declare const Bun:
+  | {
+      password: {
+        hash(password: string, options?: { algorithm?: "argon2id" | "bcrypt" }): Promise<string>;
+        verify(password: string, hash: string): Promise<boolean>;
+      };
+    }
+  | undefined;
+
+// The package name is kept in a variable (+ @vite-ignore) so Vite's client
+// dep-scanner never tries to resolve the native module — it only loads at
+// runtime on the Node dev server, inside handlers.
+const ARGON2_PKG = "@node-rs/argon2";
+
+async function nodeArgon2(): Promise<{
+  hash(password: string): Promise<string>;
+  verify(hashed: string, password: string): Promise<boolean>;
+}> {
+  return import(/* @vite-ignore */ ARGON2_PKG);
+}
+
+async function hashPassword(password: string): Promise<string> {
+  if (typeof Bun !== "undefined") return Bun.password.hash(password, { algorithm: "argon2id" });
+  return (await nodeArgon2()).hash(password);
+}
+
+async function verifyPasswordHash(password: string, storedHash: string): Promise<boolean> {
+  if (typeof Bun !== "undefined") return Bun.password.verify(password, storedHash);
+  return (await nodeArgon2()).verify(storedHash, password);
+}
 
 const encoder = new TextEncoder();
 
@@ -77,8 +102,9 @@ async function verifyPassword(input: string): Promise<boolean> {
   const cred = await getCredential();
   if (cred.kind === "hash") {
     try {
-      return await Bun.password.verify(input, cred.hash);
-    } catch {
+      return await verifyPasswordHash(input, cred.hash);
+    } catch (error) {
+      console.error("password hash verification failed", error);
       return false;
     }
   }
@@ -240,7 +266,7 @@ export const adminChangePassword = createServerFn({ method: "POST" })
     if (!(await verifyPassword(data.current)))
       return { ok: false, error: "Current password is incorrect." };
 
-    const hash = await Bun.password.hash(data.next, { algorithm: "argon2id" });
+    const hash = await hashPassword(data.next);
     await db()
       .insert(schema.adminCredentials)
       .values({ id: 1, passwordHash: hash, updatedAt: new Date() })

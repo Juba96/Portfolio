@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { asc, count, desc, eq, gt } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db, schema } from "@/db";
@@ -11,13 +11,33 @@ import { r2Configured, uploadToR2 } from "./storage.server";
 // Everything the /admin dashboard reads and writes. Every handler starts with
 // requireAdmin() — no session cookie, no data.
 
+// Day bucketing uses Baghdad local time so "today" matches the owner's day.
+const TZ = "Asia/Baghdad";
+const chatDay = sql<string>`to_char(${schema.chatLogs.createdAt} at time zone ${TZ}, 'YYYY-MM-DD')`;
+const leadDay = sql<string>`to_char(${schema.contactMessages.createdAt} at time zone ${TZ}, 'YYYY-MM-DD')`;
+
+const dayKey = (date: Date) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: TZ, dateStyle: "short" }).format(date);
+
 export const adminStats = createServerFn({ method: "GET" }).handler(async () => {
   await requireAdmin();
   const d = db();
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
-  const [leadsByStatus, chatsTotal, chatsDay, chatsWeek] = await Promise.all([
+  const [
+    leadsByStatus,
+    chatsTotal,
+    chatsDay24,
+    chatsWeek,
+    unansweredWeek,
+    hiringWeek,
+    chatsDaily,
+    leadsDaily,
+    recentLeads,
+    recentChats,
+  ] = await Promise.all([
     d
       .select({ status: schema.contactMessages.status, n: count() })
       .from(schema.contactMessages)
@@ -25,11 +45,78 @@ export const adminStats = createServerFn({ method: "GET" }).handler(async () => 
     d.select({ n: count() }).from(schema.chatLogs),
     d.select({ n: count() }).from(schema.chatLogs).where(gt(schema.chatLogs.createdAt, dayAgo)),
     d.select({ n: count() }).from(schema.chatLogs).where(gt(schema.chatLogs.createdAt, weekAgo)),
+    d
+      .select({ n: count() })
+      .from(schema.chatLogs)
+      .where(and(gt(schema.chatLogs.createdAt, weekAgo), eq(schema.chatLogs.tag, "unanswered"))),
+    d
+      .select({ n: count() })
+      .from(schema.chatLogs)
+      .where(and(gt(schema.chatLogs.createdAt, weekAgo), eq(schema.chatLogs.tag, "hiring"))),
+    d
+      .select({ day: chatDay, n: count() })
+      .from(schema.chatLogs)
+      .where(gt(schema.chatLogs.createdAt, twoWeeksAgo))
+      .groupBy(sql`1`),
+    d
+      .select({ day: leadDay, n: count() })
+      .from(schema.contactMessages)
+      .where(gt(schema.contactMessages.createdAt, twoWeeksAgo))
+      .groupBy(sql`1`),
+    d
+      .select({
+        id: schema.contactMessages.id,
+        name: schema.contactMessages.name,
+        email: schema.contactMessages.email,
+        source: schema.contactMessages.source,
+        status: schema.contactMessages.status,
+        createdAt: schema.contactMessages.createdAt,
+      })
+      .from(schema.contactMessages)
+      .orderBy(desc(schema.contactMessages.createdAt))
+      .limit(6),
+    d
+      .select({
+        id: schema.chatLogs.id,
+        question: schema.chatLogs.question,
+        tag: schema.chatLogs.tag,
+        createdAt: schema.chatLogs.createdAt,
+      })
+      .from(schema.chatLogs)
+      .where(ne(schema.chatLogs.tag, "general"))
+      .orderBy(desc(schema.chatLogs.createdAt))
+      .limit(6),
   ]);
+
+  // Last 14 days, oldest first, zero-filled.
+  const chatMap = new Map(chatsDaily.map((r) => [r.day, r.n]));
+  const leadMap = new Map(leadsDaily.map((r) => [r.day, r.n]));
+  const daily: { day: string; chats: number; leads: number }[] = [];
+  for (let i = 13; i >= 0; i--) {
+    const key = dayKey(new Date(Date.now() - i * 24 * 60 * 60 * 1000));
+    daily.push({ day: key, chats: chatMap.get(key) ?? 0, leads: leadMap.get(key) ?? 0 });
+  }
+
+  const recent = [
+    ...recentLeads.map((l) => ({ type: "lead" as const, ...l, question: null, tag: null })),
+    ...recentChats.map((c) => ({
+      type: "chat" as const,
+      ...c,
+      name: null,
+      email: null,
+      source: null,
+      status: null,
+    })),
+  ]
+    .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+    .slice(0, 8);
 
   return {
     leads: Object.fromEntries(leadsByStatus.map((r) => [r.status, r.n])) as Record<string, number>,
-    chats: { total: chatsTotal[0]?.n ?? 0, day: chatsDay[0]?.n ?? 0, week: chatsWeek[0]?.n ?? 0 },
+    chats: { total: chatsTotal[0]?.n ?? 0, day: chatsDay24[0]?.n ?? 0, week: chatsWeek[0]?.n ?? 0 },
+    week: { unanswered: unansweredWeek[0]?.n ?? 0, hiring: hiringWeek[0]?.n ?? 0 },
+    daily,
+    recent,
   };
 });
 

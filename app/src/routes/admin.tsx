@@ -405,7 +405,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.25, ease: EASE }}
         >
-          {tab === "overview" && <OverviewTab stats={stats} />}
+          {tab === "overview" && <OverviewTab stats={stats} go={setTab} />}
           {tab === "leads" && <LeadsTab onStatsChange={setStats} />}
           {tab === "chats" && <ChatsTab />}
           {tab === "content" && <ContentTab />}
@@ -418,26 +418,55 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
 // ---- Overview ------------------------------------------------------------
 
-function OverviewTab({ stats }: { stats: Stats | null }) {
+function OverviewTab({ stats, go }: { stats: Stats | null; go: (tab: Tab) => void }) {
   const leadTotal = stats ? Object.values(stats.leads).reduce((a, b) => a + b, 0) : 0;
-  const cards = [
-    { label: "New leads", value: stats?.leads["new"] ?? 0, accent: "#eab308" },
-    { label: "Total leads", value: leadTotal, accent: "#f59e0b" },
-    { label: "Chats today", value: stats?.chats.day ?? 0, accent: "#8b5cf6" },
-    { label: "Chats · 7 days", value: stats?.chats.week ?? 0, accent: "#a78bfa" },
-    { label: "Chats total", value: stats?.chats.total ?? 0, accent: "#c4b5fd" },
+  const cards: { label: string; value: number; accent: string; tab: Tab }[] = [
+    { label: "New leads", value: stats?.leads["new"] ?? 0, accent: "#eab308", tab: "leads" },
+    { label: "Total leads", value: leadTotal, accent: "#f59e0b", tab: "leads" },
+    { label: "Chats today", value: stats?.chats.day ?? 0, accent: "#8b5cf6", tab: "chats" },
+    { label: "Chats · 7 days", value: stats?.chats.week ?? 0, accent: "#a78bfa", tab: "chats" },
+    { label: "Chats total", value: stats?.chats.total ?? 0, accent: "#c4b5fd", tab: "chats" },
   ];
+
+  const attention: { label: string; detail: string; accent: string; tab: Tab }[] = [];
+  if (stats) {
+    if ((stats.leads["new"] ?? 0) > 0)
+      attention.push({
+        label: `${stats.leads["new"]} new lead${stats.leads["new"] === 1 ? "" : "s"} waiting`,
+        detail: "Follow up while they're warm",
+        accent: "#eab308",
+        tab: "leads",
+      });
+    if (stats.week.hiring > 0)
+      attention.push({
+        label: `${stats.week.hiring} client-intent chat${stats.week.hiring === 1 ? "" : "s"} this week`,
+        detail: "Someone asked about hiring or a project",
+        accent: "#f59e0b",
+        tab: "chats",
+      });
+    if (stats.week.unanswered > 0)
+      attention.push({
+        label: `${stats.week.unanswered} question${stats.week.unanswered === 1 ? "" : "s"} the AI couldn't answer`,
+        detail: "Add the missing facts in Content → AI knowledge",
+        accent: "#ef4444",
+        tab: "chats",
+      });
+  }
+
+  const maxDay = stats ? Math.max(1, ...stats.daily.map((d) => d.chats + d.leads)) : 1;
 
   return (
     <div>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {cards.map((c, i) => (
-          <motion.div
+          <motion.button
             key={c.label}
+            type="button"
+            onClick={() => go(c.tab)}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: i * 0.04, ease: EASE }}
-            className={`${glassCard} p-4 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12)] transition-all`}
+            className={`${glassCard} p-4 text-left cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12)] transition-all`}
           >
             {stats ? (
               <p className="text-[26px] font-black tracking-tight leading-none tabular-nums">{c.value}</p>
@@ -448,8 +477,145 @@ function OverviewTab({ stats }: { stats: Stats | null }) {
               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: c.accent }} aria-hidden />
               <p className="text-[11px] text-gray-500 leading-tight">{c.label}</p>
             </div>
-          </motion.div>
+          </motion.button>
         ))}
+      </div>
+
+      {attention.length > 0 && (
+        <div className="grid md:grid-cols-3 gap-3 mt-4">
+          {attention.map((a, i) => (
+            <motion.button
+              key={a.label}
+              type="button"
+              onClick={() => go(a.tab)}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.15 + i * 0.05, ease: EASE }}
+              className={`${glassCard} p-4 text-left cursor-pointer flex items-center gap-3 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12)] transition-all`}
+            >
+              <span
+                className="w-2 h-2 rounded-full shrink-0 animate-pulse"
+                style={{ background: a.accent }}
+                aria-hidden
+              />
+              <span className="min-w-0">
+                <span className="block text-[13px] font-semibold leading-tight">{a.label}</span>
+                <span className="block text-[11px] text-gray-500 mt-0.5">{a.detail}</span>
+              </span>
+              <span className="ml-auto text-gray-300 text-sm" aria-hidden>
+                →
+              </span>
+            </motion.button>
+          ))}
+        </div>
+      )}
+
+      <div className="grid md:grid-cols-2 gap-3 mt-4">
+        {/* 14-day activity */}
+        <div className={`${glassCard} p-5`}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold tracking-tight">Activity · last 14 days</h2>
+            <div className="flex items-center gap-3 text-[10px] text-gray-500">
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-[3px] bg-violet-400" aria-hidden /> Chats
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-[3px] bg-amber-400" aria-hidden /> Leads
+              </span>
+            </div>
+          </div>
+          {stats ? (
+            <>
+              <div className="flex items-end gap-[3px] h-[88px]">
+                {stats.daily.map((d) => (
+                  <div
+                    key={d.day}
+                    className="flex-1 flex flex-col justify-end gap-[2px] h-full group relative"
+                    title={`${d.day} — ${d.chats} chat${d.chats === 1 ? "" : "s"}, ${d.leads} lead${d.leads === 1 ? "" : "s"}`}
+                  >
+                    {d.leads > 0 && (
+                      <div
+                        className="rounded-[3px] bg-amber-400 group-hover:bg-amber-500 transition-colors"
+                        style={{ height: `${(d.leads / maxDay) * 100}%`, minHeight: 4 }}
+                      />
+                    )}
+                    <div
+                      className={`rounded-[3px] transition-colors ${
+                        d.chats > 0 ? "bg-violet-400 group-hover:bg-violet-500" : "bg-gray-100"
+                      }`}
+                      style={{ height: d.chats > 0 ? `${(d.chats / maxDay) * 100}%` : 3, minHeight: d.chats > 0 ? 4 : 3 }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between mt-2 text-[10px] text-gray-400 tabular-nums">
+                <span>{stats.daily[0]?.day.slice(5).replace("-", "/")}</span>
+                <span>today</span>
+              </div>
+            </>
+          ) : (
+            <Skeleton className="h-[88px] w-full" />
+          )}
+        </div>
+
+        {/* Recent activity */}
+        <div className={`${glassCard} p-5`}>
+          <h2 className="text-sm font-bold tracking-tight mb-3">Recent activity</h2>
+          {!stats ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-9 w-full" />
+              ))}
+            </div>
+          ) : stats.recent.length === 0 ? (
+            <p className="text-[12px] text-gray-400 py-6 text-center">
+              Nothing yet — leads and important chats will show up here.
+            </p>
+          ) : (
+            <ul className="space-y-1">
+              {stats.recent.map((r) => (
+                <li key={`${r.type}-${r.id}`}>
+                  <button
+                    type="button"
+                    onClick={() => go(r.type === "lead" ? "leads" : "chats")}
+                    className="w-full flex items-center gap-2.5 px-2 py-1.5 -mx-2 rounded-xl text-left hover:bg-black/[0.03] transition-colors cursor-pointer"
+                  >
+                    <span
+                      className={`w-6 h-6 rounded-lg shrink-0 flex items-center justify-center ${
+                        r.type === "lead" ? "bg-amber-100" : "bg-violet-100"
+                      }`}
+                      aria-hidden
+                    >
+                      {r.type === "lead" ? (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" className="w-3 h-3">
+                          <rect x="3" y="5" width="18" height="14" rx="2" />
+                          <path d="m3 7 9 6 9-6" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" className="w-3 h-3">
+                          <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-3.4-.7L3 21l1.8-4.4a8.4 8.4 0 1 1 16.2-5.1Z" />
+                        </svg>
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[12px] font-medium truncate">
+                        {r.type === "lead" ? r.name || r.email : r.question}
+                      </span>
+                      <span className="block text-[10px] text-gray-400 truncate">
+                        {r.type === "lead"
+                          ? `Lead · ${r.source === "chat" ? "from AI chat" : "contact form"}`
+                          : (TAG_META[r.tag ?? ""]?.label ?? "Chat")}
+                      </span>
+                    </span>
+                    <span className="text-[10px] text-gray-400 shrink-0 tabular-nums" title={new Date(r.createdAt).toLocaleString()}>
+                      {timeAgo(r.createdAt)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
       <div className={`${glassCard} p-4 mt-4 flex flex-wrap items-center justify-between gap-3`}>

@@ -41,12 +41,15 @@ export default defineConfig(({ mode, command }) => {
       // `cloudflare:workers` is a workerd runtime built-in. It is only imported
       // by the unused D1 example (src/lib/api/example.functions.ts); keep it
       // external so it never gets resolved at build time.
-      external: ["cloudflare:workers"],
+      // `@node-rs/argon2` ships a native .node binary rollup can't parse; it's
+      // the Node-only fallback for password hashing (prod runs Bun's built-in),
+      // so leave it to be resolved from node_modules at runtime.
+      external: ["cloudflare:workers", "@node-rs/argon2"],
     },
     build: {
       // Keep `cloudflare:*` external in the SSR rollup pass too — `noExternal`
       // above would otherwise try to resolve+bundle it and fail.
-      rollupOptions: { external: [/^cloudflare:/] },
+      rollupOptions: { external: [/^cloudflare:/, /^@node-rs\/argon2/] },
     },
     plugins: [
       // Material Symbols SVGs (the app icon set) import as React components via
