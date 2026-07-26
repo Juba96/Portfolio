@@ -342,6 +342,8 @@ const TABS: { id: Tab; label: string; color: string }[] = [
 function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("overview");
   const [stats, setStats] = useState<Stats | null>(null);
+  // Set when another tab wants Leads opened pre-filtered (e.g. a chat's lead).
+  const [leadsPreset, setLeadsPreset] = useState<string | null>(null);
 
   useEffect(() => {
     adminStats().then(setStats).catch(console.error);
@@ -412,8 +414,21 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           transition={{ duration: 0.25, ease: EASE }}
         >
           {tab === "overview" && <OverviewTab stats={stats} go={setTab} />}
-          {tab === "leads" && <LeadsTab onStatsChange={setStats} />}
-          {tab === "chats" && <ChatsTab />}
+          {tab === "leads" && (
+            <LeadsTab
+              onStatsChange={setStats}
+              preset={leadsPreset}
+              onPresetConsumed={() => setLeadsPreset(null)}
+            />
+          )}
+          {tab === "chats" && (
+            <ChatsTab
+              openLead={(email) => {
+                setLeadsPreset(email);
+                setTab("leads");
+              }}
+            />
+          )}
           {tab === "content" && <ContentTab />}
           {tab === "security" && <SecurityTab />}
         </motion.div>
@@ -655,6 +670,43 @@ function OverviewTab({ stats, go }: { stats: Stats | null; go: (tab: Tab) => voi
         </div>
       </div>
 
+      {/* What visitors are interested in */}
+      {stats && stats.topics.length > 0 && (
+        <div className={`${glassCard} p-5 mt-4`}>
+          <div className="flex items-baseline justify-between mb-4">
+            <h2 className="text-sm font-bold tracking-tight">What visitors ask about</h2>
+            <span className="text-[10px] text-gray-400">
+              last 90 days · {stats.topicSample} questions
+            </span>
+          </div>
+          <div className="space-y-2.5">
+            {stats.topics.map((t) => {
+              const max = stats.topics[0]?.n ?? 1;
+              return (
+                <div key={t.label} className="flex items-center gap-3">
+                  <span className="w-[170px] shrink-0 text-[12px] font-medium text-gray-700 truncate">
+                    {t.label}
+                  </span>
+                  <div className="flex-1 h-5 rounded-lg bg-gray-50 border border-black/5 overflow-hidden">
+                    <div
+                      className="h-full rounded-lg bg-gradient-to-r from-violet-400 to-violet-300"
+                      style={{ width: `${Math.max(6, (t.n / max) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="w-8 text-right text-[12px] font-bold tabular-nums text-gray-600">
+                    {t.n}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-gray-400 mt-3">
+            Counted from chat questions with keyword matching — one question can touch several
+            topics.
+          </p>
+        </div>
+      )}
+
       <div className={`${glassCard} p-4 mt-4 flex flex-wrap items-center justify-between gap-3`}>
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gray-50 border border-black/5 flex items-center justify-center">
@@ -884,7 +936,15 @@ function LeadMessage({ text }: { text: string }) {
 
 const PAGE = 30;
 
-function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
+function LeadsTab({
+  onStatsChange,
+  preset,
+  onPresetConsumed,
+}: {
+  onStatsChange: (s: Stats) => void;
+  preset?: string | null;
+  onPresetConsumed?: () => void;
+}) {
   // Server-driven: search/filter/pagination happen in the database, the
   // browser only holds the pages it has loaded.
   const [rows, setRows] = useState<Lead[] | null>(null);
@@ -898,6 +958,19 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
   const [sourceFilter, setSourceFilter] = useState<"all" | "form" | "chat">("all");
   const [view, setView] = useState<"list" | "board">("list");
   const [busyMore, setBusyMore] = useState(false);
+
+  // Arriving from another tab with a lead preselected: seed the search.
+  useEffect(() => {
+    if (preset) {
+      setQuery(preset);
+      setQ(preset);
+      setStatusFilter("all");
+      setSourceFilter("all");
+      setView("list");
+      onPresetConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset]);
 
   useEffect(() => {
     const t = setTimeout(() => setQ(query.trim()), 300);
@@ -1161,7 +1234,7 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
                   ) : (
                     column.map((l) => <PipelineCard key={l.id} lead={l} onMove={setStatus} />)
                   )}
-                  {column.length < columnTotal && (
+                  {column.length < columnTotal ? (
                     <button
                       type="button"
                       onClick={() => loadMoreColumn(s)}
@@ -1169,6 +1242,12 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
                     >
                       Show more ({columnTotal - column.length} left)
                     </button>
+                  ) : (
+                    column.length > 0 && (
+                      <p className="text-center text-[10px] text-gray-400 py-1">
+                        All {columnTotal} loaded
+                      </p>
+                    )
                   )}
                 </div>
               </div>
@@ -1273,16 +1352,24 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
         </motion.div>
       ))}
 
-      {view === "list" && filtered.length > 0 && filtered.length < filteredTotal && (
-        <button
-          type="button"
-          onClick={loadMore}
-          disabled={busyMore}
-          className={`${glassCard} w-full h-11 text-[12px] font-semibold text-gray-600 hover:text-black transition-colors cursor-pointer disabled:opacity-50`}
-        >
-          {busyMore ? "Loading…" : `Load ${Math.min(PAGE, filteredTotal - filtered.length)} more (${filteredTotal - filtered.length} left)`}
-        </button>
-      )}
+      {view === "list" &&
+        filtered.length > 0 &&
+        (filtered.length < filteredTotal ? (
+          <button
+            type="button"
+            onClick={loadMore}
+            disabled={busyMore}
+            className={`${glassCard} w-full h-11 text-[12px] font-semibold text-gray-600 hover:text-black transition-colors cursor-pointer disabled:opacity-50`}
+          >
+            {busyMore
+              ? "Loading…"
+              : `Load ${Math.min(PAGE, filteredTotal - filtered.length)} more (${filteredTotal - filtered.length} left)`}
+          </button>
+        ) : (
+          <p className="text-center text-[11px] text-gray-400 py-2">
+            All {filteredTotal} {filteredTotal === 1 ? "lead" : "leads"} loaded
+          </p>
+        ))}
     </div>
   );
 }
@@ -1310,7 +1397,7 @@ function dayLabel(date: Date): string {
 
 const CHAT_PAGE = 15;
 
-function ChatsTab() {
+function ChatsTab({ openLead }: { openLead: (email: string) => void }) {
   // Server-driven: grouping, tagging, search, sort, and pagination all run
   // in the database (adminListConversations); the browser only holds the
   // loaded pages.
@@ -1425,6 +1512,7 @@ function ChatsTab() {
     pinned: c.pinned,
     latest: new Date(c.latest),
     exchangeCount: c.exchange_count,
+    leadEmail: c.lead_email,
     exchanges: exchangesByKey.get(c.key) ?? [],
     tags: new Set(
       [c.has_lead && "lead", c.has_hiring && "hiring", c.has_unanswered && "unanswered"].filter(
@@ -1546,6 +1634,17 @@ function ChatsTab() {
                     {TAG_META[t]?.label ?? t}
                   </span>
                 ))}
+                {c.leadEmail && (
+                  <button
+                    type="button"
+                    onClick={() => openLead(c.leadEmail!)}
+                    title="Open this lead in the Leads tab"
+                    className="px-2 py-0.5 rounded-full font-semibold bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors cursor-pointer inline-flex items-center gap-1 max-w-[220px]"
+                  >
+                    <span className="truncate">{c.leadEmail}</span>
+                    <span aria-hidden>→</span>
+                  </button>
+                )}
                 <span className="px-2 py-0.5 rounded-full bg-gray-100 font-semibold text-gray-600">
                   {c.exchangeCount} {c.exchangeCount === 1 ? "exchange" : "exchanges"}
                 </span>
@@ -1609,18 +1708,23 @@ function ChatsTab() {
           );
         })}
 
-        {sorted.length > 0 && sorted.length < filterTotal && (
-          <button
-            type="button"
-            onClick={loadMore}
-            disabled={busyMore}
-            className={`${glassCard} w-full h-11 text-[12px] font-semibold text-gray-600 hover:text-black transition-colors cursor-pointer disabled:opacity-50`}
-          >
-            {busyMore
-              ? "Loading…"
-              : `Load ${Math.min(CHAT_PAGE, filterTotal - sorted.length)} more (${filterTotal - sorted.length} left)`}
-          </button>
-        )}
+        {sorted.length > 0 &&
+          (sorted.length < filterTotal ? (
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={busyMore}
+              className={`${glassCard} w-full h-11 text-[12px] font-semibold text-gray-600 hover:text-black transition-colors cursor-pointer disabled:opacity-50`}
+            >
+              {busyMore
+                ? "Loading…"
+                : `Load ${Math.min(CHAT_PAGE, filterTotal - sorted.length)} more (${filterTotal - sorted.length} left)`}
+            </button>
+          ) : (
+            <p className="text-center text-[11px] text-gray-400 py-2">
+              All {filterTotal} {filterTotal === 1 ? "conversation" : "conversations"} loaded
+            </p>
+          ))}
       </div>
     </div>
   );

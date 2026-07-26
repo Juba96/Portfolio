@@ -19,12 +19,25 @@ const leadDay = sql<string>`to_char(${schema.contactMessages.createdAt} at time 
 const dayKey = (date: Date) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: TZ, dateStyle: "short" }).format(date);
 
+// Rule-based topic buckets (EN + AR) for "what are visitors interested in" —
+// free and instant, no LLM cost. A question can count toward several topics.
+const TOPIC_RULES: { label: string; re: RegExp }[] = [
+  { label: "AI & chatbots", re: /\b(ai|chatbot|chat ?bot|llm|gpt|machine learning|agent)\b|ذكاء|روبوت/i },
+  { label: "Mobile apps", re: /\b(mobile|app|ios|android|flutter|react native)\b|تطبيق/i },
+  { label: "Web & websites", re: /\b(website|web ?app|frontend|landing page|portfolio)\b|موقع/i },
+  { label: "Telecom & VAS", re: /\b(telecom|vas|sms|operator|carrier|billing|dcb|zain|asiacell)\b|اتصالات/i },
+  { label: "Pricing & rates", re: /\b(price|pricing|rate|cost|budget|quote|charge)\b|سعر|تكلفة|ميزانية/i },
+  { label: "Hiring & collaboration", re: /\b(hire|hiring|job|freelance|collaborat|partner|work (with|together))\b|توظيف|تعاون|وظيف/i },
+  { label: "Background & skills", re: /\b(experience|skills?|cv|resume|education|stud(y|ied)|certification|stack|degree)\b|خبرة|مهارات|دراسة|شهادة/i },
+];
+
 export const adminStats = createServerFn({ method: "GET" }).handler(async () => {
   await requireAdmin();
   const d = db();
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 
   const [
     leadsByStatus,
@@ -37,6 +50,7 @@ export const adminStats = createServerFn({ method: "GET" }).handler(async () => 
     leadsDaily,
     recentLeads,
     recentChats,
+    recentQuestions,
   ] = await Promise.all([
     d
       .select({ status: schema.contactMessages.status, n: count() })
@@ -86,7 +100,26 @@ export const adminStats = createServerFn({ method: "GET" }).handler(async () => 
       .where(ne(schema.chatLogs.tag, "general"))
       .orderBy(desc(schema.chatLogs.createdAt))
       .limit(6),
+    // Newest 500 questions of the last 90 days feed the topics card —
+    // bounded so the query stays cheap at any table size.
+    d
+      .select({ question: schema.chatLogs.question })
+      .from(schema.chatLogs)
+      .where(gt(schema.chatLogs.createdAt, ninetyDaysAgo))
+      .orderBy(desc(schema.chatLogs.createdAt))
+      .limit(500),
   ]);
+
+  const topicCounts = new Map<string, number>();
+  for (const { question } of recentQuestions) {
+    for (const rule of TOPIC_RULES) {
+      if (rule.re.test(question)) topicCounts.set(rule.label, (topicCounts.get(rule.label) ?? 0) + 1);
+    }
+  }
+  const topics = [...topicCounts.entries()]
+    .map(([label, n]) => ({ label, n }))
+    .sort((a, b) => b.n - a.n)
+    .slice(0, 6);
 
   // Last 14 days, oldest first, zero-filled.
   const chatMap = new Map(chatsDaily.map((r) => [r.day, r.n]));
@@ -117,6 +150,8 @@ export const adminStats = createServerFn({ method: "GET" }).handler(async () => 
     week: { unanswered: unansweredWeek[0]?.n ?? 0, hiring: hiringWeek[0]?.n ?? 0 },
     daily,
     recent,
+    topics,
+    topicSample: recentQuestions.length,
   };
 });
 
@@ -290,8 +325,15 @@ export const adminListConversations = createServerFn({ method: "GET" })
       d.execute(sql`
         with conv as (${conv})
         select c.key, c.latest, c.exchange_count, c.has_lead, c.has_hiring, c.has_unanswered,
-          (p.key is not null) as pinned
-        from conv c left join pinned_conversations p on p.key = c.key
+          (p.key is not null) as pinned,
+          cm.email as lead_email, cm.id as lead_id
+        from conv c
+        left join pinned_conversations p on p.key = c.key
+        left join lateral (
+          select email, id from contact_messages
+          where session_id = c.key
+          order by created_at desc limit 1
+        ) cm on true
         where c.matches ${filterCond}
         order by ${orderBy}
         limit ${data.limit} offset ${data.offset}`),
@@ -314,6 +356,8 @@ export const adminListConversations = createServerFn({ method: "GET" })
       has_hiring: boolean;
       has_unanswered: boolean;
       pinned: boolean;
+      lead_email: string | null;
+      lead_id: number | null;
     }[];
     const counts = (countsRes.rows[0] ?? { important: 0, starred: 0, unanswered: 0, total: 0 }) as {
       important: number;
