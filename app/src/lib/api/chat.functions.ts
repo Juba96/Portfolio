@@ -83,7 +83,7 @@ export const askPortfolioChat = createServerFn({ method: "POST" })
         : rawReply;
       if (reply)
         logChatExchange(question, reply, provider, data.sessionId, offtopic ? "unanswered" : undefined);
-      void captureChatLead(data.messages);
+      void captureChatLead(data.messages, data.sessionId);
       return { reply };
     };
 

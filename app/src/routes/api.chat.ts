@@ -143,7 +143,7 @@ export const Route = createFileRoute("/api/chat")({
                   parsed.data.sessionId,
                   offtopic ? "unanswered" : undefined,
                 );
-              void captureChatLead(messages);
+              void captureChatLead(messages, parsed.data.sessionId);
             }
           },
           cancel() {

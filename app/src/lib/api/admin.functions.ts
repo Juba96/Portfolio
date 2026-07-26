@@ -142,6 +142,30 @@ export const adminSetLeadStatus = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const adminSetLeadNotes = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ id: z.number().int(), notes: z.string().max(4000) }))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    await db()
+      .update(schema.contactMessages)
+      .set({ notes: data.notes.trim() || null })
+      .where(eq(schema.contactMessages.id, data.id));
+    return { ok: true };
+  });
+
+// Full transcript of one chat session — shown next to chat-captured leads.
+export const adminChatSession = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ sessionId: z.string().min(1).max(40) }))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    return db()
+      .select()
+      .from(schema.chatLogs)
+      .where(eq(schema.chatLogs.sessionId, data.sessionId))
+      .orderBy(asc(schema.chatLogs.createdAt))
+      .limit(100);
+  });
+
 export const adminListChatLogs = createServerFn({ method: "GET" }).handler(async () => {
   await requireAdmin();
   return db().select().from(schema.chatLogs).orderBy(desc(schema.chatLogs.createdAt)).limit(150);

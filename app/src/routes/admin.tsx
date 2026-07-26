@@ -16,12 +16,14 @@ import {
   adminTotpEnable,
 } from "@/lib/api/admin-auth.functions";
 import {
+  adminChatSession,
   adminGetContent,
   adminListChatLogs,
   adminListLeads,
   adminListRevisions,
   adminRestoreRevision,
   adminSaveContent,
+  adminSetLeadNotes,
   adminSetLeadStatus,
   adminStats,
   adminStorageStatus,
@@ -683,6 +685,178 @@ const STATUS_META = {
   closed: { label: "Closed", active: "bg-gray-700 text-white" },
 } as const;
 
+const STATUS_ORDER = ["new", "contacted", "closed"] as const;
+
+// Private follow-up notes, saved per lead.
+function LeadNotes({ lead }: { lead: Lead }) {
+  const [open, setOpen] = useState(Boolean(lead.notes));
+  const [value, setValue] = useState(lead.notes ?? "");
+  const [baseline, setBaseline] = useState(lead.notes ?? "");
+  const [saved, setSaved] = useState<null | "saving" | "saved">(null);
+
+  const save = async () => {
+    setSaved("saving");
+    await adminSetLeadNotes({ data: { id: lead.id, notes: value } }).catch(console.error);
+    setBaseline(value);
+    setSaved("saved");
+    setTimeout(() => setSaved(null), 1500);
+  };
+
+  if (!open)
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="h-8 px-3.5 rounded-full border border-dashed border-black/15 text-[11px] font-semibold text-gray-500 hover:text-gray-800 hover:border-black/30 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="w-3.5 h-3.5" aria-hidden>
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        Add note
+      </button>
+    );
+
+  return (
+    <div className="basis-full mt-1">
+      <label className={labelCls} htmlFor={`notes-${lead.id}`}>
+        Notes <span className="normal-case font-normal text-gray-400">(only you see these)</span>
+      </label>
+      <textarea
+        id={`notes-${lead.id}`}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        rows={2}
+        placeholder="Follow-up plan, context, agreed budget…"
+        className={`${fieldCls} resize-y min-h-[60px]`}
+      />
+      <div className="flex items-center gap-2 mt-1.5">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saved === "saving" || value === baseline}
+          className="h-8 px-3.5 rounded-full bg-black text-white text-[11px] font-semibold hover:bg-gray-800 transition-colors disabled:opacity-40 cursor-pointer"
+        >
+          {saved === "saving" ? "Saving…" : "Save note"}
+        </button>
+        {saved === "saved" && (
+          <span className="text-[11px] text-green-600 font-medium" role="status">
+            Saved ✓
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Chat-lead content: the stored summary (their last messages) swaps in place
+// with the full transcript — never both at once, so nothing reads twice.
+function LeadChatThread({ lead }: { lead: Lead }) {
+  const [open, setOpen] = useState(false);
+  const [logs, setLogs] = useState<ChatLog[] | null>(null);
+
+  const toggle = () => {
+    setOpen((v) => !v);
+    if (!logs && lead.sessionId)
+      adminChatSession({ data: { sessionId: lead.sessionId } })
+        .then(setLogs)
+        .catch(console.error);
+  };
+
+  return (
+    <div className="mt-3 bg-gray-50 border border-black/5 rounded-xl px-3.5 py-2.5">
+      {!open ? (
+        <p className="text-[13px] text-gray-700 leading-relaxed whitespace-pre-line">
+          {lead.message}
+        </p>
+      ) : !logs ? (
+        <Skeleton className="h-16 w-full" />
+      ) : logs.length === 0 ? (
+        <p className="text-[12px] text-gray-400 text-center py-2">
+          No transcript stored for this session — showing their messages instead.
+        </p>
+      ) : (
+        <div className="space-y-2.5 max-h-72 overflow-y-auto">
+          {logs.map((log) => (
+            <div key={log.id} className="space-y-1">
+              <p className="text-[12px] font-semibold text-gray-800 leading-snug">{log.question}</p>
+              <p className="text-[12px] text-gray-500 leading-snug whitespace-pre-line border-l-2 border-black/10 pl-2">
+                {log.answer}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={toggle}
+        className="mt-1.5 text-[11px] font-semibold text-blue-600 hover:underline cursor-pointer"
+      >
+        {open ? "Show summary" : "View full conversation"}
+      </button>
+    </div>
+  );
+}
+
+// Compact card for the pipeline board.
+function PipelineCard({
+  lead,
+  onMove,
+}: {
+  lead: Lead;
+  onMove: (id: number, status: (typeof STATUS_ORDER)[number]) => void;
+}) {
+  const idx = STATUS_ORDER.indexOf(lead.status as (typeof STATUS_ORDER)[number]);
+  return (
+    <div className="bg-white rounded-xl border border-black/10 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.08)] p-3">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[12px] font-bold truncate">{lead.name}</span>
+        <span
+          className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold shrink-0 ${
+            lead.source === "chat" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
+          }`}
+        >
+          {lead.source === "chat" ? "chat" : "form"}
+        </span>
+        <span className="text-[10px] text-gray-400 ml-auto shrink-0" title={new Date(lead.createdAt).toLocaleString()}>
+          {timeAgo(lead.createdAt)}
+        </span>
+      </div>
+      <a href={`mailto:${lead.email}`} className="block text-[11px] text-blue-600 hover:underline truncate mt-0.5">
+        {lead.email}
+      </a>
+      <p className="text-[11px] text-gray-500 mt-1 line-clamp-2 leading-snug">{lead.message}</p>
+      {lead.notes && (
+        <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 mt-1.5 line-clamp-2">
+          📝 {lead.notes}
+        </p>
+      )}
+      <div className="flex items-center justify-between mt-2">
+        <button
+          type="button"
+          onClick={() => idx > 0 && onMove(lead.id, STATUS_ORDER[idx - 1])}
+          disabled={idx <= 0}
+          aria-label="Move to previous stage"
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-800 hover:bg-gray-50 disabled:opacity-25 transition-colors cursor-pointer disabled:cursor-default"
+        >
+          ←
+        </button>
+        <span className="text-[9px] uppercase tracking-wider text-gray-400 font-semibold">
+          {STATUS_META[lead.status as keyof typeof STATUS_META]?.label ?? lead.status}
+        </span>
+        <button
+          type="button"
+          onClick={() => idx < STATUS_ORDER.length - 1 && onMove(lead.id, STATUS_ORDER[idx + 1])}
+          disabled={idx >= STATUS_ORDER.length - 1}
+          aria-label="Move to next stage"
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-800 hover:bg-gray-50 disabled:opacity-25 transition-colors cursor-pointer disabled:cursor-default"
+        >
+          →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Long messages collapse so the list stays scannable.
 function LeadMessage({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false);
@@ -710,6 +884,7 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | keyof typeof STATUS_META>("all");
   const [sourceFilter, setSourceFilter] = useState<"all" | "form" | "chat">("all");
+  const [view, setView] = useState<"list" | "board">("list");
 
   useEffect(() => {
     adminListLeads().then(setLeads).catch(console.error);
@@ -752,9 +927,12 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
 
   const q = query.trim().toLowerCase();
   const filtered = leads.filter((l) => {
-    if (statusFilter !== "all" && l.status !== statusFilter) return false;
+    // The board shows every status as its own column, so the status filter
+    // only applies in list view.
+    if (view === "list" && statusFilter !== "all" && l.status !== statusFilter) return false;
     if (sourceFilter !== "all" && l.source !== sourceFilter) return false;
-    if (q && ![l.name, l.email, l.message].some((v) => v.toLowerCase().includes(q))) return false;
+    if (q && ![l.name, l.email, l.message, l.notes ?? ""].some((v) => v.toLowerCase().includes(q)))
+      return false;
     return true;
   });
   const countFor = (s: keyof typeof STATUS_META) => leads.filter((l) => l.status === s).length;
@@ -785,24 +963,26 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
             className="w-full h-9 rounded-full border border-black/10 bg-white pl-9 pr-3.5 text-[13px] placeholder:text-gray-400 focus:outline-none focus:border-black/30 focus:ring-2 focus:ring-black/5 transition-all"
           />
         </div>
-        <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Filter by status">
-          {(["all", ...Object.keys(STATUS_META)] as ("all" | keyof typeof STATUS_META)[]).map((s) => (
-            <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
-              aria-pressed={statusFilter === s}
-              className={`h-8 px-3 rounded-full text-[11px] font-semibold transition-all active:scale-[0.97] cursor-pointer ${
-                statusFilter === s
-                  ? s === "all"
-                    ? "bg-black text-white"
-                    : STATUS_META[s as keyof typeof STATUS_META].active
-                  : "text-gray-500 hover:text-gray-800"
-              }`}
-            >
-              {s === "all" ? `All ${leads.length}` : `${STATUS_META[s as keyof typeof STATUS_META].label} ${countFor(s as keyof typeof STATUS_META)}`}
-            </button>
-          ))}
-        </div>
+        {view === "list" && (
+          <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Filter by status">
+            {(["all", ...Object.keys(STATUS_META)] as ("all" | keyof typeof STATUS_META)[]).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                aria-pressed={statusFilter === s}
+                className={`h-8 px-3 rounded-full text-[11px] font-semibold transition-all active:scale-[0.97] cursor-pointer ${
+                  statusFilter === s
+                    ? s === "all"
+                      ? "bg-black text-white"
+                      : STATUS_META[s as keyof typeof STATUS_META].active
+                    : "text-gray-500 hover:text-gray-800"
+                }`}
+              >
+                {s === "all" ? `All ${leads.length}` : `${STATUS_META[s as keyof typeof STATUS_META].label} ${countFor(s as keyof typeof STATUS_META)}`}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Filter by source">
           {(
             [
@@ -823,6 +1003,25 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
             </button>
           ))}
         </div>
+        <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="View mode">
+          {(
+            [
+              ["list", "List"],
+              ["board", "Pipeline"],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              aria-pressed={view === v}
+              className={`h-8 px-3 rounded-full text-[11px] font-semibold transition-all active:scale-[0.97] cursor-pointer ${
+                view === v ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {filtered.length === 0 && (
@@ -832,7 +1031,35 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
         </div>
       )}
 
-      {filtered.map((l, i) => (
+      {view === "board" && filtered.length > 0 && (
+        <div className="grid md:grid-cols-3 gap-3 items-start">
+          {STATUS_ORDER.map((s) => {
+            const column = filtered.filter((l) => l.status === s);
+            const dot = s === "new" ? "#f59e0b" : s === "contacted" ? "#3b82f6" : "#6b7280";
+            return (
+              <div key={s} className="rounded-2xl bg-gray-50/80 border border-black/5 p-2.5">
+                <div className="flex items-center gap-2 px-1.5 pb-2">
+                  <span className="w-2 h-2 rounded-full" style={{ background: dot }} aria-hidden />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-600">
+                    {STATUS_META[s].label}
+                  </span>
+                  <span className="text-[11px] text-gray-400 tabular-nums">{column.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {column.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 text-center py-6">Empty</p>
+                  ) : (
+                    column.map((l) => <PipelineCard key={l.id} lead={l} onMove={setStatus} />)
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "list" &&
+        filtered.map((l, i) => (
         <motion.div
           key={l.id}
           initial={{ opacity: 0, y: 10 }}
@@ -891,7 +1118,7 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
             </div>
           </div>
 
-          <LeadMessage text={l.message} />
+          {l.sessionId ? <LeadChatThread lead={l} /> : <LeadMessage text={l.message} />}
 
           <div className="flex flex-wrap items-center gap-2 mt-3">
             <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Lead status">
@@ -918,6 +1145,11 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
               </svg>
               Reply
             </a>
+          </div>
+
+          {/* Private follow-up notes */}
+          <div className="flex flex-wrap items-start gap-2 mt-3">
+            <LeadNotes lead={l} />
           </div>
         </motion.div>
       ))}

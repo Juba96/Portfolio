@@ -12,6 +12,11 @@ export const contactMessages = pgTable("contact_messages", {
   message: text("message").notNull(),
   status: varchar("status", { length: 20 }).notNull().default("new"),
   source: varchar("source", { length: 20 }).notNull().default("form"),
+  // Owner's private follow-up notes, edited from the CRM view in /admin.
+  notes: text("notes"),
+  // For chat-captured leads: the chat session they came from, so the
+  // dashboard can show the full conversation next to the lead.
+  sessionId: varchar("session_id", { length: 40 }),
   // Set when the automated thank-you email was sent (null = not sent).
   autoRepliedAt: timestamp("auto_replied_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

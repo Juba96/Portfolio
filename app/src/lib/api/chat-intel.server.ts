@@ -59,7 +59,7 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
 // If the visitor's latest message contains an email address, record it as a
 // lead (source 'chat') with recent conversation context. Deduped per email
 // per 24h so an enthusiastic visitor doesn't create a pile of rows.
-export async function captureChatLead(messages: ChatTurn[]) {
+export async function captureChatLead(messages: ChatTurn[], sessionId?: string) {
   try {
     const last = messages[messages.length - 1];
     if (!last || last.role !== "user") return;
@@ -93,6 +93,7 @@ export async function captureChatLead(messages: ChatTurn[]) {
         email,
         message: context.slice(0, 4000),
         source: "chat",
+        sessionId: sessionId?.slice(0, 40) ?? null,
       })
       .returning({ id: schema.contactMessages.id });
 
