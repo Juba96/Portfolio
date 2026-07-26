@@ -20,6 +20,7 @@ import {
   adminGetContent,
   adminListChatLogs,
   adminListLeads,
+  adminListPins,
   adminListRevisions,
   adminRestoreRevision,
   adminSaveContent,
@@ -27,6 +28,7 @@ import {
   adminSetLeadStatus,
   adminStats,
   adminStorageStatus,
+  adminTogglePin,
   adminUploadImage,
 } from "@/lib/api/admin.functions";
 
@@ -1217,7 +1219,7 @@ function groupConversations(logs: ChatLog[]): Conversation[] {
     });
 }
 
-type ChatFilter = "important" | "unanswered" | "all";
+type ChatFilter = "important" | "starred" | "unanswered" | "all";
 
 // Bucket a date into a human section label for the Newest sort.
 function dayLabel(date: Date): string {
@@ -1236,20 +1238,36 @@ function ChatsTab() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"priority" | "newest">("priority");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [pins, setPins] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     adminListChatLogs().then(setLogs).catch(console.error);
+    adminListPins()
+      .then((keys) => setPins(new Set(keys)))
+      .catch(console.error);
   }, []);
+
+  const togglePin = (key: string) => {
+    // Optimistic toggle; the server call settles in the background.
+    setPins((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    adminTogglePin({ data: { key } }).catch(console.error);
+  };
 
   const conversations = useMemo(() => (logs ? groupConversations(logs) : []), [logs]);
 
   const counts = useMemo(
     () => ({
       important: conversations.filter((c) => c.tags.has("lead") || c.tags.has("hiring")).length,
+      starred: conversations.filter((c) => pins.has(c.key)).length,
       unanswered: conversations.filter((c) => c.tags.has("unanswered")).length,
       all: conversations.length,
     }),
-    [conversations],
+    [conversations, pins],
   );
 
   // Don't land the user on an empty "Important" view.
@@ -1283,15 +1301,22 @@ function ChatsTab() {
   const q = query.trim().toLowerCase();
   const visible = conversations.filter((c) => {
     if (filter === "important" && !(c.tags.has("lead") || c.tags.has("hiring"))) return false;
+    if (filter === "starred" && !pins.has(c.key)) return false;
     if (filter === "unanswered" && !c.tags.has("unanswered")) return false;
     if (q && !c.exchanges.some((e) => `${e.question}\n${e.answer}`.toLowerCase().includes(q)))
       return false;
     return true;
   });
-  const sorted = sort === "newest" ? [...visible].sort((a, b) => +b.latest - +a.latest) : visible;
+  // Newest = strictly chronological. Priority = starred first, then the
+  // automatic importance order from groupConversations.
+  const sorted =
+    sort === "newest"
+      ? [...visible].sort((a, b) => +b.latest - +a.latest)
+      : [...visible].sort((a, b) => Number(pins.has(b.key)) - Number(pins.has(a.key)));
 
   const FILTERS: { id: ChatFilter; label: string; count: number }[] = [
     { id: "important", label: "Important", count: counts.important },
+    { id: "starred", label: "Starred", count: counts.starred },
     { id: "unanswered", label: "Couldn't answer", count: counts.unanswered },
     { id: "all", label: "All", count: counts.all },
   ];
@@ -1408,6 +1433,26 @@ function ChatsTab() {
                 <span className="text-gray-400 ml-auto" title={c.latest.toLocaleString()}>
                   {timeAgo(c.latest)}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => togglePin(c.key)}
+                  aria-pressed={pins.has(c.key)}
+                  aria-label={pins.has(c.key) ? "Unstar conversation" : "Star conversation"}
+                  title={pins.has(c.key) ? "Unstar — drop from the top" : "Star — keep on top of Priority"}
+                  className="w-7 h-7 -my-1 rounded-lg flex items-center justify-center hover:bg-gray-50 transition-colors cursor-pointer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill={pins.has(c.key) ? "#f59e0b" : "none"}
+                    stroke={pins.has(c.key) ? "#f59e0b" : "#9ca3af"}
+                    strokeWidth="1.8"
+                    strokeLinejoin="round"
+                    className="w-4 h-4"
+                    aria-hidden
+                  >
+                    <path d="m12 3 2.7 5.6 6.3.9-4.5 4.3 1 6.2-5.5-3-5.5 3 1-6.2L3 9.5l6.3-.9Z" />
+                  </svg>
+                </button>
               </div>
 
               {!isOpen && (

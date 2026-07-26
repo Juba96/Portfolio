@@ -51,6 +51,14 @@ export const contentRevisions = pgTable("content_revisions", {
   savedAt: timestamp("saved_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Conversations the owner starred in /admin → Chats. key = the conversation
+// key (sessionId, or "legacy-<id>" for pre-session rows). Starred threads
+// sort to the top of the Priority view.
+export const pinnedConversations = pgTable("pinned_conversations", {
+  key: varchar("key", { length: 64 }).primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Admin password (argon2id hash), singleton row id=1. When present it is the
 // ONLY accepted password; the ADMIN_PASSWORD env var is just the bootstrap
 // credential used until the first in-dashboard password change.

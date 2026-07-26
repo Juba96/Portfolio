@@ -166,6 +166,32 @@ export const adminChatSession = createServerFn({ method: "GET" })
       .limit(100);
   });
 
+// Starred conversation keys, and a toggle for the star button in Chats.
+export const adminListPins = createServerFn({ method: "GET" }).handler(async () => {
+  await requireAdmin();
+  const rows = await db().select({ key: schema.pinnedConversations.key }).from(schema.pinnedConversations);
+  return rows.map((r) => r.key);
+});
+
+export const adminTogglePin = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ key: z.string().min(1).max(64) }))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const existing = await db()
+      .select({ key: schema.pinnedConversations.key })
+      .from(schema.pinnedConversations)
+      .where(eq(schema.pinnedConversations.key, data.key))
+      .limit(1);
+    if (existing.length > 0) {
+      await db()
+        .delete(schema.pinnedConversations)
+        .where(eq(schema.pinnedConversations.key, data.key));
+      return { pinned: false };
+    }
+    await db().insert(schema.pinnedConversations).values({ key: data.key }).onConflictDoNothing();
+    return { pinned: true };
+  });
+
 export const adminListChatLogs = createServerFn({ method: "GET" }).handler(async () => {
   await requireAdmin();
   return db().select().from(schema.chatLogs).orderBy(desc(schema.chatLogs.createdAt)).limit(150);
