@@ -153,16 +153,30 @@ function PageSkeleton() {
 
 function LoginCard({ onSuccess }: { onSuccess: () => void }) {
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [step, setStep] = useState<"password" | "code">("password");
   const [show, setShow] = useState(false);
-  const [state, setState] = useState<"idle" | "checking" | "error">("idle");
+  const [state, setState] = useState<"idle" | "checking" | "error" | "badCode">("idle");
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setState("checking");
     try {
-      const res = await adminLogin({ data: { password } });
-      if (res.ok) onSuccess();
-      else setState("error");
+      const res = await adminLogin({
+        data: { password, ...(code ? { code } : {}) },
+      });
+      if (res.ok) {
+        onSuccess();
+        return;
+      }
+      if ("needCode" in res && res.needCode) {
+        // Password accepted — 2FA step.
+        setStep("code");
+        setState("badCode" in res && res.badCode ? "badCode" : "idle");
+        setCode("");
+        return;
+      }
+      setState("error");
     } catch {
       setState("error");
     }
@@ -184,55 +198,89 @@ function LoginCard({ onSuccess }: { onSuccess: () => void }) {
             <p className="text-[11px] text-gray-500">Taha Yasir — private area</p>
           </div>
         </div>
-        <label className={labelCls} htmlFor="admin-password">
-          Password
-        </label>
-        <div className="relative">
-          <input
-            id="admin-password"
-            type={show ? "text" : "password"}
-            className={`${fieldCls} pr-11`}
-            placeholder="••••••••••••"
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              if (state === "error") setState("idle");
-            }}
-            autoFocus
-            autoComplete="current-password"
-          />
-          <button
-            type="button"
-            onClick={() => setShow(!show)}
-            aria-label={show ? "Hide password" : "Show password"}
-            className="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 transition-colors"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]" aria-hidden>
-              {show ? (
-                <>
-                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M4 4l16 16" />
-                </>
-              ) : (
-                <>
-                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
-                  <circle cx="12" cy="12" r="3" />
-                </>
-              )}
-            </svg>
-          </button>
-        </div>
+        {step === "password" ? (
+          <>
+            <label className={labelCls} htmlFor="admin-password">
+              Password
+            </label>
+            <div className="relative">
+              <input
+                id="admin-password"
+                type={show ? "text" : "password"}
+                className={`${fieldCls} pr-11`}
+                placeholder="••••••••••••"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (state === "error") setState("idle");
+                }}
+                autoFocus
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShow(!show)}
+                aria-label={show ? "Hide password" : "Show password"}
+                className="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 transition-colors"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]" aria-hidden>
+                  {show ? (
+                    <>
+                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                      <circle cx="12" cy="12" r="3" />
+                      <path d="M4 4l16 16" />
+                    </>
+                  ) : (
+                    <>
+                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </>
+                  )}
+                </svg>
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <label className={labelCls} htmlFor="admin-code">
+              Two-factor code
+            </label>
+            <input
+              id="admin-code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="\d{6}"
+              maxLength={6}
+              className={`${fieldCls} text-center text-lg tracking-[0.4em] font-semibold`}
+              placeholder="000000"
+              value={code}
+              onChange={(e) => {
+                setCode(e.target.value.replace(/\D/g, ""));
+                if (state === "badCode") setState("idle");
+              }}
+              autoFocus
+            />
+            <p className="mt-2 text-[11px] text-gray-400">
+              Enter the 6-digit code from your authenticator app.
+            </p>
+          </>
+        )}
         <button
           type="submit"
-          disabled={state === "checking" || !password}
+          disabled={state === "checking" || (step === "password" ? !password : code.length !== 6)}
           className="mt-4 w-full h-11 rounded-xl bg-black text-white text-sm font-semibold hover:bg-gray-800 active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {state === "checking" ? "Checking…" : "Enter dashboard"}
+          {state === "checking" ? "Checking…" : step === "password" ? "Continue" : "Enter dashboard"}
         </button>
         {state === "error" && (
           <p className="mt-3 text-xs text-red-600" role="alert">
             That password isn't right. Attempts are rate-limited — wait a minute if it keeps failing.
+          </p>
+        )}
+        {state === "badCode" && (
+          <p className="mt-3 text-xs text-red-600" role="alert">
+            That code didn't match — codes rotate every 30 seconds, try the current one.
           </p>
         )}
       </motion.form>
