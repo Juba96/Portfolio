@@ -3,7 +3,13 @@ import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 
 import type { SiteContent } from "@/content/schema";
-import { adminLogin, adminLogout, adminSession } from "@/lib/api/admin-auth.functions";
+import {
+  adminChangePassword,
+  adminLogin,
+  adminLogout,
+  adminSecurityStatus,
+  adminSession,
+} from "@/lib/api/admin-auth.functions";
 import {
   adminGetContent,
   adminListChatLogs,
@@ -63,8 +69,20 @@ function Skeleton({ className = "" }: { className?: string }) {
 }
 
 // Inline SVG icons — same stroke language as the portfolio nav (1.8, round).
-function Icon({ name, color }: { name: "overview" | "leads" | "chats" | "content"; color: string }) {
+function Icon({
+  name,
+  color,
+}: {
+  name: "overview" | "leads" | "chats" | "content" | "security";
+  color: string;
+}) {
   const paths: Record<string, React.ReactNode> = {
+    security: (
+      <>
+        <path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z" />
+        <path d="M12 10v4M12 16.5v.5" />
+      </>
+    ),
     overview: (
       <>
         <rect x="3" y="12" width="4" height="8" rx="1" />
@@ -300,13 +318,14 @@ function BrandMark() {
 
 // ---- Dashboard shell -----------------------------------------------------
 
-type Tab = "overview" | "leads" | "chats" | "content";
+type Tab = "overview" | "leads" | "chats" | "content" | "security";
 
 const TABS: { id: Tab; label: string; color: string }[] = [
   { id: "overview", label: "Overview", color: "#14b8a6" },
   { id: "leads", label: "Leads", color: "#eab308" },
   { id: "chats", label: "Chats", color: "#8b5cf6" },
   { id: "content", label: "Content", color: "#10b981" },
+  { id: "security", label: "Security", color: "#ec4899" },
 ];
 
 function Dashboard({ onLogout }: { onLogout: () => void }) {
@@ -385,6 +404,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           {tab === "leads" && <LeadsTab onStatsChange={setStats} />}
           {tab === "chats" && <ChatsTab />}
           {tab === "content" && <ContentTab />}
+          {tab === "security" && <SecurityTab />}
         </motion.div>
       </AnimatePresence>
     </motion.div>
@@ -890,6 +910,197 @@ function UploadButton({
         </span>
       )}
     </span>
+  );
+}
+
+// ---- Security -------------------------------------------------------------
+
+function generatePassword(): string {
+  // 20 chars from an unambiguous alphabet, via CSPRNG.
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*";
+  const bytes = new Uint8Array(20);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+}
+
+function SecurityTab() {
+  const [status, setStatus] = useState<{ passwordSource: string; totpEnabled: boolean } | null>(null);
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [showNext, setShowNext] = useState(false);
+  const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  const load = () => {
+    adminSecurityStatus().then(setStatus).catch(console.error);
+  };
+  useEffect(load, []);
+
+  const generate = () => {
+    const pw = generatePassword();
+    setNext(pw);
+    setConfirm(pw);
+    setShowNext(true);
+    setError(null);
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (next.length < 12) {
+      setError("New password must be at least 12 characters.");
+      return;
+    }
+    if (next !== confirm) {
+      setError("New password and confirmation don't match.");
+      return;
+    }
+    setState("saving");
+    try {
+      const res = await adminChangePassword({ data: { current, next } });
+      if (res.ok) {
+        setState("saved");
+        setCurrent("");
+        setNext("");
+        setConfirm("");
+        setShowNext(false);
+        load();
+      } else {
+        setState("idle");
+        setError(res.error ?? "Change failed.");
+      }
+    } catch {
+      setState("idle");
+      setError("Change failed — try again.");
+    }
+  };
+
+  return (
+    <div className="space-y-4 max-w-xl">
+      <div className={`${glassCard} p-5`}>
+        <h2 className="text-sm font-bold tracking-tight mb-3">Status</h2>
+        {!status ? (
+          <Skeleton className="h-14" />
+        ) : (
+          <div className="space-y-2 text-[13px]">
+            <div className="flex items-center gap-2">
+              {status.passwordSource === "hash" ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-green-500" aria-hidden />
+                  <span>
+                    Password: <strong>custom</strong> — set from this dashboard (argon2id-hashed in
+                    the database). The old ADMIN_PASSWORD env value no longer works.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-amber-500" aria-hidden />
+                  <span>
+                    Password: <strong>bootstrap</strong> — still using the ADMIN_PASSWORD
+                    environment variable. Set a custom one below.
+                  </span>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-2 h-2 rounded-full ${status.totpEnabled ? "bg-green-500" : "bg-amber-500"}`}
+                aria-hidden
+              />
+              <span>
+                Two-factor (authenticator app): <strong>{status.totpEnabled ? "enabled" : "off"}</strong>
+                {!status.totpEnabled && " — set ADMIN_TOTP_SECRET in the environment to enable."}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <form onSubmit={submit} className={`${glassCard} p-5`}>
+        <h2 className="text-sm font-bold tracking-tight mb-1">Change password</h2>
+        <p className="text-[11px] text-gray-400 mb-4">
+          Changing the password logs out every other device; this session stays signed in.
+        </p>
+        <div className="space-y-3">
+          <div>
+            <label className={labelCls} htmlFor="sec-current">
+              Current password
+            </label>
+            <input
+              id="sec-current"
+              type="password"
+              className={fieldCls}
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className={`${labelCls} mb-0`} htmlFor="sec-next">
+                New password (min 12 characters)
+              </label>
+              <button
+                type="button"
+                onClick={generate}
+                className="text-[11px] font-semibold text-blue-600 hover:underline"
+              >
+                Generate strong password
+              </button>
+            </div>
+            <input
+              id="sec-next"
+              type={showNext ? "text" : "password"}
+              className={fieldCls}
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              autoComplete="new-password"
+              minLength={12}
+              required
+            />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="sec-confirm">
+              Confirm new password
+            </label>
+            <input
+              id="sec-confirm"
+              type={showNext ? "text" : "password"}
+              className={fieldCls}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              autoComplete="new-password"
+              required
+            />
+          </div>
+          {showNext && next && (
+            <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Save this password in your password manager now — it won't be shown again:
+              <span className="block font-mono font-semibold mt-1 select-all">{next}</span>
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={state === "saving" || !current || !next || !confirm}
+            className="h-11 px-6 rounded-full bg-black text-white text-sm font-semibold hover:bg-gray-800 active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {state === "saving" ? "Changing…" : "Change password"}
+          </button>
+          {state === "saved" && (
+            <p className="text-[12px] text-green-600 font-medium" role="status">
+              Password changed ✓ — other devices are logged out.
+            </p>
+          )}
+          {error && (
+            <p className="text-[12px] text-red-600" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
+      </form>
+    </div>
   );
 }
 

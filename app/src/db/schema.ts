@@ -45,3 +45,12 @@ export const contentRevisions = pgTable("content_revisions", {
   data: jsonb("data").notNull(),
   savedAt: timestamp("saved_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Admin password (argon2id hash), singleton row id=1. When present it is the
+// ONLY accepted password; the ADMIN_PASSWORD env var is just the bootstrap
+// credential used until the first in-dashboard password change.
+export const adminCredentials = pgTable("admin_credentials", {
+  id: integer("id").primaryKey(),
+  passwordHash: text("password_hash").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
