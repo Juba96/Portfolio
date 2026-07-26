@@ -54,3 +54,13 @@ export const adminCredentials = pgTable("admin_credentials", {
   passwordHash: text("password_hash").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Admin TOTP state, singleton row id=1, managed from the Security tab:
+//   no row            → fall back to the ADMIN_TOTP_SECRET env var (bootstrap)
+//   row, secret set   → 2FA enabled with this secret
+//   row, secret NULL  → 2FA explicitly disabled (env var ignored)
+export const adminTotp = pgTable("admin_totp", {
+  id: integer("id").primaryKey(),
+  secret: text("secret"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

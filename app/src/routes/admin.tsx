@@ -3,12 +3,17 @@ import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 
 import type { SiteContent } from "@/content/schema";
+import QRCode from "qrcode";
+
 import {
   adminChangePassword,
   adminLogin,
   adminLogout,
   adminSecurityStatus,
   adminSession,
+  adminTotpBegin,
+  adminTotpDisable,
+  adminTotpEnable,
 } from "@/lib/api/admin-auth.functions";
 import {
   adminGetContent,
@@ -1010,12 +1015,13 @@ function SecurityTab() {
               />
               <span>
                 Two-factor (authenticator app): <strong>{status.totpEnabled ? "enabled" : "off"}</strong>
-                {!status.totpEnabled && " — set ADMIN_TOTP_SECRET in the environment to enable."}
               </span>
             </div>
           </div>
         )}
       </div>
+
+      {status && <TotpCard enabled={status.totpEnabled} onChanged={load} />}
 
       <form onSubmit={submit} className={`${glassCard} p-5`}>
         <h2 className="text-sm font-bold tracking-tight mb-1">Change password</h2>
@@ -1100,6 +1106,241 @@ function SecurityTab() {
           )}
         </div>
       </form>
+    </div>
+  );
+}
+
+// ---- 2FA wizard -----------------------------------------------------------
+
+function TotpCard({ enabled, onChanged }: { enabled: boolean; onChanged: () => void }) {
+  const [phase, setPhase] = useState<"idle" | "setup" | "disable">("idle");
+  const [secret, setSecret] = useState("");
+  const [qr, setQr] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  const begin = async () => {
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    try {
+      const res = await adminTotpBegin();
+      setSecret(res.secret);
+      setQr(await QRCode.toDataURL(res.uri, { width: 220, margin: 1 }));
+      setCode("");
+      setPhase("setup");
+    } catch {
+      setError("Couldn't start setup — try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const enable = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await adminTotpEnable({ data: { secret, code } });
+      if (res.ok) {
+        setPhase("idle");
+        setDone("Two-factor enabled ✓ — you'll need a code on every future login.");
+        setQr(null);
+        setSecret("");
+        onChanged();
+      } else {
+        setError(res.error ?? "Verification failed.");
+      }
+    } catch {
+      setError("Verification failed — try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disable = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await adminTotpDisable({ data: { password } });
+      if (res.ok) {
+        setPhase("idle");
+        setPassword("");
+        setDone("Two-factor disabled.");
+        onChanged();
+      } else {
+        setError(res.error ?? "Couldn't disable.");
+      }
+    } catch {
+      setError("Couldn't disable — try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={`${glassCard} p-5`}>
+      <h2 className="text-sm font-bold tracking-tight mb-1">Two-factor authentication</h2>
+      <p className="text-[11px] text-gray-400 mb-4">
+        A 6-digit code from your authenticator app, required at every login.
+      </p>
+
+      {phase === "idle" && (
+        <div className="flex flex-wrap items-center gap-3">
+          {enabled ? (
+            <>
+              <button
+                onClick={() => {
+                  setPhase("disable");
+                  setDone(null);
+                  setError(null);
+                }}
+                className="h-10 px-5 rounded-full border border-red-200 text-[13px] font-semibold text-red-600 hover:bg-red-50 transition-colors"
+              >
+                Disable 2FA
+              </button>
+              <button
+                onClick={begin}
+                disabled={busy}
+                className="h-10 px-5 rounded-full border border-black/10 text-[13px] font-semibold text-gray-700 hover:border-black/30 transition-colors disabled:opacity-40"
+              >
+                {busy ? "Preparing…" : "Re-enroll (new secret)"}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={begin}
+              disabled={busy}
+              className="h-10 px-5 rounded-full bg-black text-white text-[13px] font-semibold hover:bg-gray-800 transition-colors disabled:opacity-40"
+            >
+              {busy ? "Preparing…" : "Enable 2FA"}
+            </button>
+          )}
+          {done && (
+            <span className="text-[12px] text-green-600 font-medium" role="status">
+              {done}
+            </span>
+          )}
+        </div>
+      )}
+
+      {phase === "setup" && (
+        <form onSubmit={enable} className="space-y-4">
+          <ol className="text-[12px] text-gray-600 space-y-1 list-decimal list-inside">
+            <li>Open your authenticator app (Google Authenticator, Apple Passwords, Authy…)</li>
+            <li>Scan the QR code, or enter the setup key manually</li>
+            <li>Type the 6-digit code the app shows to confirm</li>
+          </ol>
+          <div className="flex flex-wrap items-start gap-5">
+            {qr && (
+              <img
+                src={qr}
+                alt="Scan this QR code with your authenticator app"
+                className="w-[180px] h-[180px] rounded-xl border border-black/10"
+              />
+            )}
+            <div className="min-w-[220px] flex-1 space-y-3">
+              <div>
+                <label className={labelCls}>Setup key (manual entry)</label>
+                <p className="font-mono text-[12px] font-semibold bg-gray-50 border border-black/5 rounded-lg px-3 py-2 select-all break-all">
+                  {secret}
+                </p>
+              </div>
+              <div>
+                <label className={labelCls} htmlFor="totp-confirm">
+                  Code from your app
+                </label>
+                <input
+                  id="totp-confirm"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  className={`${fieldCls} text-center text-lg tracking-[0.4em] font-semibold max-w-[220px]`}
+                  placeholder="000000"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={busy || code.length !== 6}
+                  className="h-10 px-5 rounded-full bg-black text-white text-[13px] font-semibold hover:bg-gray-800 transition-colors disabled:opacity-40"
+                >
+                  {busy ? "Verifying…" : "Verify & enable"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhase("idle");
+                    setQr(null);
+                    setSecret("");
+                    setError(null);
+                  }}
+                  className="h-10 px-4 rounded-full text-[13px] font-medium text-gray-500 hover:text-black transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+          {error && (
+            <p className="text-[12px] text-red-600" role="alert">
+              {error}
+            </p>
+          )}
+        </form>
+      )}
+
+      {phase === "disable" && (
+        <form onSubmit={disable} className="space-y-3 max-w-sm">
+          <div>
+            <label className={labelCls} htmlFor="totp-disable-pw">
+              Confirm with your password
+            </label>
+            <input
+              id="totp-disable-pw"
+              type="password"
+              className={fieldCls}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              autoFocus
+              required
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={busy || !password}
+              className="h-10 px-5 rounded-full bg-red-600 text-white text-[13px] font-semibold hover:bg-red-700 transition-colors disabled:opacity-40"
+            >
+              {busy ? "Disabling…" : "Disable 2FA"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPhase("idle");
+                setPassword("");
+                setError(null);
+              }}
+              className="h-10 px-4 rounded-full text-[13px] font-medium text-gray-500 hover:text-black transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+          {error && (
+            <p className="text-[12px] text-red-600" role="alert">
+              {error}
+            </p>
+          )}
+        </form>
+      )}
     </div>
   );
 }
