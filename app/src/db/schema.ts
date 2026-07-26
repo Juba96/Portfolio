@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
 // Run `bun run db:push` after changing this file (dev) or
 // `bun run db:generate` + `bun run db:migrate` (versioned migrations).
@@ -20,7 +20,10 @@ export const contactMessages = pgTable("contact_messages", {
   // Set when the automated thank-you email was sent (null = not sent).
   autoRepliedAt: timestamp("auto_replied_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("contact_messages_created_idx").on(t.createdAt),
+  index("contact_messages_status_idx").on(t.status),
+]);
 
 // Every AI-chat exchange (anonymous — no IPs or identities stored).
 // sessionId groups exchanges into one visitor conversation; tag is a
@@ -35,7 +38,10 @@ export const chatLogs = pgTable("chat_logs", {
   provider: varchar("provider", { length: 20 }).notNull(),
   tag: varchar("tag", { length: 20 }).notNull().default("general"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("chat_logs_created_idx").on(t.createdAt),
+  index("chat_logs_session_idx").on(t.sessionId),
+]);
 
 // Singleton editable site content (id always 1). Shape = siteContentSchema.
 export const siteContent = pgTable("site_content", {

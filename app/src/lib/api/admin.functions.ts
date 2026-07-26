@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { and, asc, count, desc, eq, gt, ne, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db, schema } from "@/db";
@@ -120,14 +120,60 @@ export const adminStats = createServerFn({ method: "GET" }).handler(async () => 
   };
 });
 
-export const adminListLeads = createServerFn({ method: "GET" }).handler(async () => {
-  await requireAdmin();
-  return db()
-    .select()
-    .from(schema.contactMessages)
-    .orderBy(desc(schema.contactMessages.createdAt))
-    .limit(200);
-});
+// Server-side search/filter/pagination so the dashboard scales past a few
+// hundred leads: the browser only ever holds the pages it has asked for,
+// and counts are computed by the database over ALL rows.
+function leadConditions(q?: string, status?: string, source?: string) {
+  const conds = [];
+  if (status) conds.push(eq(schema.contactMessages.status, status));
+  if (source) conds.push(eq(schema.contactMessages.source, source));
+  if (q) {
+    const pat = `%${q}%`;
+    conds.push(
+      or(
+        ilike(schema.contactMessages.name, pat),
+        ilike(schema.contactMessages.email, pat),
+        ilike(schema.contactMessages.message, pat),
+        ilike(schema.contactMessages.notes, pat),
+      ),
+    );
+  }
+  return conds.length ? and(...conds) : undefined;
+}
+
+export const adminListLeads = createServerFn({ method: "GET" })
+  .inputValidator(
+    z.object({
+      q: z.string().max(200).optional(),
+      status: z.enum(["new", "contacted", "closed"]).optional(),
+      source: z.enum(["form", "chat"]).optional(),
+      limit: z.number().int().min(1).max(100).default(30),
+      offset: z.number().int().min(0).max(100000).default(0),
+    }),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const d = db();
+    const [rows, grouped] = await Promise.all([
+      d
+        .select()
+        .from(schema.contactMessages)
+        .where(leadConditions(data.q, data.status, data.source))
+        .orderBy(desc(schema.contactMessages.createdAt), desc(schema.contactMessages.id))
+        .limit(data.limit)
+        .offset(data.offset),
+      // Status counts share the q/source filters (but not status), so the
+      // pills always show accurate totals for the current search.
+      d
+        .select({ status: schema.contactMessages.status, n: count() })
+        .from(schema.contactMessages)
+        .where(leadConditions(data.q, undefined, data.source))
+        .groupBy(schema.contactMessages.status),
+    ]);
+    const counts = { new: 0, contacted: 0, closed: 0 } as Record<string, number>;
+    for (const g of grouped) counts[g.status] = g.n;
+    return { rows, counts, total: counts.new + counts.contacted + counts.closed };
+  });
 
 export const adminSetLeadStatus = createServerFn({ method: "POST" })
   .inputValidator(
@@ -190,6 +236,112 @@ export const adminTogglePin = createServerFn({ method: "POST" })
     }
     await db().insert(schema.pinnedConversations).values({ key: data.key }).onConflictDoNothing();
     return { pinned: true };
+  });
+
+// Conversation list, fully database-side: exchanges are grouped into
+// conversations (by sessionId; pre-session rows stand alone), tagged,
+// scored, searched, and paginated in SQL — the browser never loads more
+// than one page. Returns conversation metadata in display order plus the
+// exchanges for just those conversations.
+export const adminListConversations = createServerFn({ method: "GET" })
+  .inputValidator(
+    z.object({
+      q: z.string().max(200).optional(),
+      filter: z.enum(["important", "starred", "unanswered", "all"]).default("all"),
+      sort: z.enum(["priority", "newest"]).default("priority"),
+      limit: z.number().int().min(1).max(50).default(15),
+      offset: z.number().int().min(0).max(100000).default(0),
+    }),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const d = db();
+    const pat = data.q ? `%${data.q}%` : null;
+
+    const conv = sql`
+      select coalesce(cl.session_id, 'legacy-' || cl.id::text) as key,
+        max(cl.created_at) as latest,
+        count(*)::int as exchange_count,
+        bool_or(cl.tag = 'lead') as has_lead,
+        bool_or(cl.tag = 'hiring') as has_hiring,
+        bool_or(cl.tag = 'unanswered') as has_unanswered,
+        ${pat ? sql`bool_or(cl.question ilike ${pat} or cl.answer ilike ${pat})` : sql`true`} as matches
+      from chat_logs cl
+      group by 1`;
+
+    const filterCond =
+      data.filter === "important"
+        ? sql`and (c.has_lead or c.has_hiring)`
+        : data.filter === "starred"
+          ? sql`and p.key is not null`
+          : data.filter === "unanswered"
+            ? sql`and c.has_unanswered`
+            : sql``;
+
+    const orderBy =
+      data.sort === "newest"
+        ? sql`c.latest desc`
+        : sql`(case when p.key is not null then 8 else 0 end)
+            + (case when c.has_lead then 4 else 0 end)
+            + (case when c.has_hiring then 2 else 0 end)
+            + (case when c.has_unanswered then 1 else 0 end) desc, c.latest desc`;
+
+    const [pageRes, countsRes] = await Promise.all([
+      d.execute(sql`
+        with conv as (${conv})
+        select c.key, c.latest, c.exchange_count, c.has_lead, c.has_hiring, c.has_unanswered,
+          (p.key is not null) as pinned
+        from conv c left join pinned_conversations p on p.key = c.key
+        where c.matches ${filterCond}
+        order by ${orderBy}
+        limit ${data.limit} offset ${data.offset}`),
+      d.execute(sql`
+        with conv as (${conv})
+        select
+          count(*) filter (where c.has_lead or c.has_hiring)::int as important,
+          count(*) filter (where p.key is not null)::int as starred,
+          count(*) filter (where c.has_unanswered)::int as unanswered,
+          count(*)::int as total
+        from conv c left join pinned_conversations p on p.key = c.key
+        where c.matches`),
+    ]);
+
+    const page = pageRes.rows as {
+      key: string;
+      latest: string;
+      exchange_count: number;
+      has_lead: boolean;
+      has_hiring: boolean;
+      has_unanswered: boolean;
+      pinned: boolean;
+    }[];
+    const counts = (countsRes.rows[0] ?? { important: 0, starred: 0, unanswered: 0, total: 0 }) as {
+      important: number;
+      starred: number;
+      unanswered: number;
+      total: number;
+    };
+
+    // Exchanges for just this page of conversations.
+    const sessionKeys = page.map((c) => c.key).filter((k) => !k.startsWith("legacy-"));
+    const legacyIds = page
+      .map((c) => c.key)
+      .filter((k) => k.startsWith("legacy-"))
+      .map((k) => Number(k.slice(7)))
+      .filter(Number.isFinite);
+    const exchangeConds = [];
+    if (sessionKeys.length) exchangeConds.push(inArray(schema.chatLogs.sessionId, sessionKeys));
+    if (legacyIds.length)
+      exchangeConds.push(and(isNull(schema.chatLogs.sessionId), inArray(schema.chatLogs.id, legacyIds)));
+    const exchanges = exchangeConds.length
+      ? await d
+          .select()
+          .from(schema.chatLogs)
+          .where(exchangeConds.length === 1 ? exchangeConds[0] : or(...exchangeConds))
+          .orderBy(asc(schema.chatLogs.createdAt))
+      : [];
+
+    return { page, counts, exchanges };
   });
 
 export const adminListChatLogs = createServerFn({ method: "GET" }).handler(async () => {

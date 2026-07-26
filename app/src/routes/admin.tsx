@@ -19,8 +19,8 @@ import {
   adminChatSession,
   adminGetContent,
   adminListChatLogs,
+  adminListConversations,
   adminListLeads,
-  adminListPins,
   adminListRevisions,
   adminRestoreRevision,
   adminSaveContent,
@@ -44,8 +44,10 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-type Lead = Awaited<ReturnType<typeof adminListLeads>>[number];
+type Lead = Awaited<ReturnType<typeof adminListLeads>>["rows"][number];
 type ChatLog = Awaited<ReturnType<typeof adminListChatLogs>>[number];
+type ConvMeta = Awaited<ReturnType<typeof adminListConversations>>["page"][number];
+type StatusKey = "new" | "contacted" | "closed";
 type Stats = Awaited<ReturnType<typeof adminStats>>;
 type Revision = Awaited<ReturnType<typeof adminListRevisions>>[number];
 
@@ -880,22 +882,134 @@ function LeadMessage({ text }: { text: string }) {
   );
 }
 
+const PAGE = 30;
+
 function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
-  const [leads, setLeads] = useState<Lead[] | null>(null);
+  // Server-driven: search/filter/pagination happen in the database, the
+  // browser only holds the pages it has loaded.
+  const [rows, setRows] = useState<Lead[] | null>(null);
+  const [board, setBoard] = useState<Record<StatusKey, Lead[]> | null>(null);
+  const [counts, setCounts] = useState<Record<string, number>>({ new: 0, contacted: 0, closed: 0 });
+  const [total, setTotal] = useState(0);
   const [copied, setCopied] = useState<number | null>(null);
   const [query, setQuery] = useState("");
+  const [q, setQ] = useState(""); // debounced
   const [statusFilter, setStatusFilter] = useState<"all" | keyof typeof STATUS_META>("all");
   const [sourceFilter, setSourceFilter] = useState<"all" | "form" | "chat">("all");
   const [view, setView] = useState<"list" | "board">("list");
+  const [busyMore, setBusyMore] = useState(false);
 
   useEffect(() => {
-    adminListLeads().then(setLeads).catch(console.error);
-  }, []);
+    const t = setTimeout(() => setQ(query.trim()), 300);
+    return () => clearTimeout(t);
+  }, [query]);
 
-  const setStatus = async (id: number, status: "new" | "contacted" | "closed") => {
-    setLeads((prev) => prev?.map((l) => (l.id === id ? { ...l, status } : l)) ?? null);
-    await adminSetLeadStatus({ data: { id, status } }).catch(console.error);
+  const baseParams = useMemo(
+    () => ({
+      q: q || undefined,
+      source: sourceFilter === "all" ? undefined : sourceFilter,
+    }),
+    [q, sourceFilter],
+  );
+
+  useEffect(() => {
+    let alive = true;
+    if (view === "list") {
+      adminListLeads({
+        data: {
+          ...baseParams,
+          status: statusFilter === "all" ? undefined : statusFilter,
+          limit: PAGE,
+          offset: 0,
+        },
+      })
+        .then((r) => {
+          if (!alive) return;
+          setRows(r.rows);
+          setCounts(r.counts);
+          setTotal(r.total);
+        })
+        .catch(console.error);
+    } else {
+      Promise.all(
+        STATUS_ORDER.map((s) =>
+          adminListLeads({ data: { ...baseParams, status: s, limit: PAGE, offset: 0 } }),
+        ),
+      )
+        .then(([n, c, cl]) => {
+          if (!alive) return;
+          setBoard({ new: n.rows, contacted: c.rows, closed: cl.rows });
+          setCounts(n.counts);
+          setTotal(n.total);
+        })
+        .catch(console.error);
+    }
+    return () => {
+      alive = false;
+    };
+  }, [baseParams, statusFilter, view]);
+
+  const setStatus = (id: number, status: StatusKey) => {
+    const current =
+      rows?.find((l) => l.id === id) ??
+      (board ? STATUS_ORDER.flatMap((s) => board[s]).find((l) => l.id === id) : undefined);
+    const prev = current?.status as StatusKey | undefined;
+    if (!current || prev === status) return;
+
+    setRows(
+      (rs) =>
+        rs
+          ?.map((l) => (l.id === id ? { ...l, status } : l))
+          .filter((l) => statusFilter === "all" || l.status === statusFilter) ?? null,
+    );
+    setBoard((b) => {
+      if (!b || !prev) return b;
+      const moved = b[prev].find((l) => l.id === id);
+      if (!moved) return b;
+      return {
+        ...b,
+        [prev]: b[prev].filter((l) => l.id !== id),
+        [status]: [{ ...moved, status }, ...b[status]],
+      };
+    });
+    if (prev)
+      setCounts((c) => ({
+        ...c,
+        [prev]: Math.max(0, (c[prev] ?? 0) - 1),
+        [status]: (c[status] ?? 0) + 1,
+      }));
+    adminSetLeadStatus({ data: { id, status } }).catch(console.error);
     adminStats().then(onStatsChange).catch(() => {});
+  };
+
+  const loadMore = async () => {
+    if (!rows) return;
+    setBusyMore(true);
+    try {
+      const r = await adminListLeads({
+        data: {
+          ...baseParams,
+          status: statusFilter === "all" ? undefined : statusFilter,
+          limit: PAGE,
+          offset: rows.length,
+        },
+      });
+      setRows((prev) => [...(prev ?? []), ...r.rows]);
+      setCounts(r.counts);
+      setTotal(r.total);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setBusyMore(false);
+    }
+  };
+
+  const loadMoreColumn = async (s: StatusKey) => {
+    if (!board) return;
+    const r = await adminListLeads({
+      data: { ...baseParams, status: s, limit: PAGE, offset: board[s].length },
+    }).catch(() => null);
+    if (r) setBoard((b) => (b ? { ...b, [s]: [...b[s], ...r.rows] } : b));
   };
 
   const copyEmail = (id: number, email: string) => {
@@ -904,7 +1018,7 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
     setTimeout(() => setCopied(null), 1500);
   };
 
-  if (!leads)
+  if (view === "list" ? !rows : !board)
     return (
       <div className="space-y-3">
         {[0, 1].map((i) => (
@@ -913,7 +1027,8 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
       </div>
     );
 
-  if (leads.length === 0)
+  const pristine = !q && sourceFilter === "all" && statusFilter === "all";
+  if (total === 0 && pristine)
     return (
       <div className={`${glassCard} p-10 text-center`}>
         <div className="text-3xl mb-2" aria-hidden>
@@ -927,17 +1042,9 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
       </div>
     );
 
-  const q = query.trim().toLowerCase();
-  const filtered = leads.filter((l) => {
-    // The board shows every status as its own column, so the status filter
-    // only applies in list view.
-    if (view === "list" && statusFilter !== "all" && l.status !== statusFilter) return false;
-    if (sourceFilter !== "all" && l.source !== sourceFilter) return false;
-    if (q && ![l.name, l.email, l.message, l.notes ?? ""].some((v) => v.toLowerCase().includes(q)))
-      return false;
-    return true;
-  });
-  const countFor = (s: keyof typeof STATUS_META) => leads.filter((l) => l.status === s).length;
+  const filtered = rows ?? [];
+  const filteredTotal = statusFilter === "all" ? total : (counts[statusFilter] ?? 0);
+  const countFor = (s: keyof typeof STATUS_META) => counts[s] ?? 0;
 
   return (
     <div className="space-y-3">
@@ -980,7 +1087,7 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
                     : "text-gray-500 hover:text-gray-800"
                 }`}
               >
-                {s === "all" ? `All ${leads.length}` : `${STATUS_META[s as keyof typeof STATUS_META].label} ${countFor(s as keyof typeof STATUS_META)}`}
+                {s === "all" ? `All ${total}` : `${STATUS_META[s as keyof typeof STATUS_META].label} ${countFor(s as keyof typeof STATUS_META)}`}
               </button>
             ))}
           </div>
@@ -1026,17 +1133,18 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
         </div>
       </div>
 
-      {filtered.length === 0 && (
+      {view === "list" && filtered.length === 0 && (
         <div className={`${glassCard} p-8 text-center`}>
           <p className="text-sm font-semibold">No leads match</p>
           <p className="text-[12px] text-gray-500 mt-1">Try a different search or filter.</p>
         </div>
       )}
 
-      {view === "board" && filtered.length > 0 && (
+      {view === "board" && board && (
         <div className="grid md:grid-cols-3 gap-3 items-start">
           {STATUS_ORDER.map((s) => {
-            const column = filtered.filter((l) => l.status === s);
+            const column = board[s];
+            const columnTotal = counts[s] ?? 0;
             const dot = s === "new" ? "#f59e0b" : s === "contacted" ? "#3b82f6" : "#6b7280";
             return (
               <div key={s} className="rounded-2xl bg-gray-50/80 border border-black/5 p-2.5">
@@ -1045,13 +1153,22 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
                   <span className="text-[11px] font-bold uppercase tracking-wider text-gray-600">
                     {STATUS_META[s].label}
                   </span>
-                  <span className="text-[11px] text-gray-400 tabular-nums">{column.length}</span>
+                  <span className="text-[11px] text-gray-400 tabular-nums">{columnTotal}</span>
                 </div>
                 <div className="space-y-2">
                   {column.length === 0 ? (
                     <p className="text-[11px] text-gray-400 text-center py-6">Empty</p>
                   ) : (
                     column.map((l) => <PipelineCard key={l.id} lead={l} onMove={setStatus} />)
+                  )}
+                  {column.length < columnTotal && (
+                    <button
+                      type="button"
+                      onClick={() => loadMoreColumn(s)}
+                      className="w-full h-8 rounded-xl bg-white border border-black/5 text-[11px] font-medium text-gray-500 hover:text-black hover:border-black/15 transition-colors cursor-pointer"
+                    >
+                      Show more ({columnTotal - column.length} left)
+                    </button>
                   )}
                 </div>
               </div>
@@ -1155,6 +1272,17 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
           </div>
         </motion.div>
       ))}
+
+      {view === "list" && filtered.length > 0 && filtered.length < filteredTotal && (
+        <button
+          type="button"
+          onClick={loadMore}
+          disabled={busyMore}
+          className={`${glassCard} w-full h-11 text-[12px] font-semibold text-gray-600 hover:text-black transition-colors cursor-pointer disabled:opacity-50`}
+        >
+          {busyMore ? "Loading…" : `Load ${Math.min(PAGE, filteredTotal - filtered.length)} more (${filteredTotal - filtered.length} left)`}
+        </button>
+      )}
     </div>
   );
 }
@@ -1166,58 +1294,6 @@ const TAG_META: Record<string, { label: string; cls: string }> = {
   hiring: { label: "Client intent", cls: "bg-amber-100 text-amber-700" },
   unanswered: { label: "Couldn't answer", cls: "bg-red-100 text-red-600" },
 };
-
-type Conversation = {
-  key: string;
-  exchanges: ChatLog[]; // chronological
-  latest: Date;
-  tags: Set<string>;
-};
-
-// Group exchanges into conversations by sessionId; legacy rows without one
-// are grouped by 30-minute proximity so old data still reads as threads.
-function groupConversations(logs: ChatLog[]): Conversation[] {
-  const bySession = new Map<string, ChatLog[]>();
-  const legacy: ChatLog[] = [];
-  for (const log of logs) {
-    if (log.sessionId) {
-      const list = bySession.get(log.sessionId) ?? [];
-      list.push(log);
-      bySession.set(log.sessionId, list);
-    } else {
-      legacy.push(log);
-    }
-  }
-  const groups: ChatLog[][] = [...bySession.values()];
-  legacy.sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
-  let current: ChatLog[] = [];
-  for (const log of legacy) {
-    const prev = current[current.length - 1];
-    if (prev && +new Date(log.createdAt) - +new Date(prev.createdAt) > 30 * 60 * 1000) {
-      groups.push(current);
-      current = [];
-    }
-    current.push(log);
-  }
-  if (current.length) groups.push(current);
-
-  return groups
-    .map((exchanges) => {
-      exchanges.sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
-      return {
-        key: exchanges[0].sessionId ?? `legacy-${exchanges[0].id}`,
-        exchanges,
-        latest: new Date(exchanges[exchanges.length - 1].createdAt),
-        tags: new Set(exchanges.map((e) => e.tag).filter((t) => t !== "general")),
-      };
-    })
-    .sort((a, b) => {
-      // Important conversations first, then most recent.
-      const score = (c: Conversation) =>
-        (c.tags.has("lead") ? 4 : 0) + (c.tags.has("hiring") ? 2 : 0) + (c.tags.has("unanswered") ? 1 : 0);
-      return score(b) - score(a) || +b.latest - +a.latest;
-    });
-}
 
 type ChatFilter = "important" | "starred" | "unanswered" | "all";
 
@@ -1232,51 +1308,96 @@ function dayLabel(date: Date): string {
   return date.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 }
 
+const CHAT_PAGE = 15;
+
 function ChatsTab() {
-  const [logs, setLogs] = useState<ChatLog[] | null>(null);
+  // Server-driven: grouping, tagging, search, sort, and pagination all run
+  // in the database (adminListConversations); the browser only holds the
+  // loaded pages.
+  const [meta, setMeta] = useState<ConvMeta[] | null>(null);
+  const [exchangesByKey, setExchangesByKey] = useState<Map<string, ChatLog[]>>(new Map());
+  const [counts, setCounts] = useState({ important: 0, starred: 0, unanswered: 0, total: 0 });
   const [filter, setFilter] = useState<ChatFilter>("important");
   const [query, setQuery] = useState("");
+  const [q, setQ] = useState(""); // debounced
   const [sort, setSort] = useState<"priority" | "newest">("priority");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [pins, setPins] = useState<Set<string>>(new Set());
+  const [busyMore, setBusyMore] = useState(false);
+  const [landed, setLanded] = useState(false);
 
   useEffect(() => {
-    adminListChatLogs().then(setLogs).catch(console.error);
-    adminListPins()
-      .then((keys) => setPins(new Set(keys)))
+    const t = setTimeout(() => setQ(query.trim()), 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const mergeExchanges = (prev: Map<string, ChatLog[]>, incoming: ChatLog[], reset: boolean) => {
+    const next = reset ? new Map<string, ChatLog[]>() : new Map(prev);
+    for (const e of incoming) {
+      const key = e.sessionId ?? `legacy-${e.id}`;
+      const arr = next.get(key) ?? [];
+      if (!arr.some((x) => x.id === e.id)) arr.push(e);
+      next.set(key, arr);
+    }
+    return next;
+  };
+
+  useEffect(() => {
+    let alive = true;
+    adminListConversations({
+      data: { q: q || undefined, filter, sort, limit: CHAT_PAGE, offset: 0 },
+    })
+      .then((r) => {
+        if (!alive) return;
+        setMeta(r.page);
+        setCounts(r.counts);
+        setExchangesByKey((prev) => mergeExchanges(prev, r.exchanges, true));
+        // Don't land the user on an empty "Important" view (first load only).
+        if (!landed) {
+          setLanded(true);
+          if (r.counts.important === 0 && filter === "important") setFilter("all");
+        }
+      })
       .catch(console.error);
-  }, []);
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, filter, sort]);
 
   const togglePin = (key: string) => {
-    // Optimistic toggle; the server call settles in the background.
-    setPins((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+    const wasPinned = meta?.find((c) => c.key === key)?.pinned ?? false;
+    setMeta((m) => m?.map((c) => (c.key === key ? { ...c, pinned: !c.pinned } : c)) ?? null);
+    setCounts((c) => ({ ...c, starred: Math.max(0, c.starred + (wasPinned ? -1 : 1)) }));
     adminTogglePin({ data: { key } }).catch(console.error);
   };
 
-  const conversations = useMemo(() => (logs ? groupConversations(logs) : []), [logs]);
+  const filterTotal =
+    filter === "all"
+      ? counts.total
+      : filter === "important"
+        ? counts.important
+        : filter === "starred"
+          ? counts.starred
+          : counts.unanswered;
 
-  const counts = useMemo(
-    () => ({
-      important: conversations.filter((c) => c.tags.has("lead") || c.tags.has("hiring")).length,
-      starred: conversations.filter((c) => pins.has(c.key)).length,
-      unanswered: conversations.filter((c) => c.tags.has("unanswered")).length,
-      all: conversations.length,
-    }),
-    [conversations, pins],
-  );
+  const loadMore = async () => {
+    if (!meta) return;
+    setBusyMore(true);
+    try {
+      const r = await adminListConversations({
+        data: { q: q || undefined, filter, sort, limit: CHAT_PAGE, offset: meta.length },
+      });
+      setMeta((prev) => [...(prev ?? []), ...r.page]);
+      setCounts(r.counts);
+      setExchangesByKey((prev) => mergeExchanges(prev, r.exchanges, false));
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setBusyMore(false);
+    }
+  };
 
-  // Don't land the user on an empty "Important" view.
-  useEffect(() => {
-    if (logs && counts.important === 0 && filter === "important") setFilter("all");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [logs]);
-
-  if (!logs)
+  if (!meta)
     return (
       <div className="space-y-3">
         {[0, 1, 2].map((i) => (
@@ -1285,7 +1406,7 @@ function ChatsTab() {
       </div>
     );
 
-  if (conversations.length === 0)
+  if (counts.total === 0 && !q)
     return (
       <div className={`${glassCard} p-10 text-center`}>
         <div className="text-3xl mb-2" aria-hidden>
@@ -1298,27 +1419,25 @@ function ChatsTab() {
       </div>
     );
 
-  const q = query.trim().toLowerCase();
-  const visible = conversations.filter((c) => {
-    if (filter === "important" && !(c.tags.has("lead") || c.tags.has("hiring"))) return false;
-    if (filter === "starred" && !pins.has(c.key)) return false;
-    if (filter === "unanswered" && !c.tags.has("unanswered")) return false;
-    if (q && !c.exchanges.some((e) => `${e.question}\n${e.answer}`.toLowerCase().includes(q)))
-      return false;
-    return true;
-  });
-  // Newest = strictly chronological. Priority = starred first, then the
-  // automatic importance order from groupConversations.
-  const sorted =
-    sort === "newest"
-      ? [...visible].sort((a, b) => +b.latest - +a.latest)
-      : [...visible].sort((a, b) => Number(pins.has(b.key)) - Number(pins.has(a.key)));
+  // Server order is already the display order.
+  const sorted = meta.map((c) => ({
+    key: c.key,
+    pinned: c.pinned,
+    latest: new Date(c.latest),
+    exchangeCount: c.exchange_count,
+    exchanges: exchangesByKey.get(c.key) ?? [],
+    tags: new Set(
+      [c.has_lead && "lead", c.has_hiring && "hiring", c.has_unanswered && "unanswered"].filter(
+        (t): t is string => Boolean(t),
+      ),
+    ),
+  }));
 
   const FILTERS: { id: ChatFilter; label: string; count: number }[] = [
     { id: "important", label: "Important", count: counts.important },
     { id: "starred", label: "Starred", count: counts.starred },
     { id: "unanswered", label: "Couldn't answer", count: counts.unanswered },
-    { id: "all", label: "All", count: counts.all },
+    { id: "all", label: "All", count: counts.total },
   ];
 
   return (
@@ -1428,7 +1547,7 @@ function ChatsTab() {
                   </span>
                 ))}
                 <span className="px-2 py-0.5 rounded-full bg-gray-100 font-semibold text-gray-600">
-                  {c.exchanges.length} {c.exchanges.length === 1 ? "exchange" : "exchanges"}
+                  {c.exchangeCount} {c.exchangeCount === 1 ? "exchange" : "exchanges"}
                 </span>
                 <span className="text-gray-400 ml-auto" title={c.latest.toLocaleString()}>
                   {timeAgo(c.latest)}
@@ -1436,15 +1555,15 @@ function ChatsTab() {
                 <button
                   type="button"
                   onClick={() => togglePin(c.key)}
-                  aria-pressed={pins.has(c.key)}
-                  aria-label={pins.has(c.key) ? "Unstar conversation" : "Star conversation"}
-                  title={pins.has(c.key) ? "Unstar — drop from the top" : "Star — keep on top of Priority"}
+                  aria-pressed={c.pinned}
+                  aria-label={c.pinned ? "Unstar conversation" : "Star conversation"}
+                  title={c.pinned ? "Unstar — drop from the top" : "Star — keep on top of Priority"}
                   className="w-7 h-7 -my-1 rounded-lg flex items-center justify-center hover:bg-gray-50 transition-colors cursor-pointer"
                 >
                   <svg
                     viewBox="0 0 24 24"
-                    fill={pins.has(c.key) ? "#f59e0b" : "none"}
-                    stroke={pins.has(c.key) ? "#f59e0b" : "#9ca3af"}
+                    fill={c.pinned ? "#f59e0b" : "none"}
+                    stroke={c.pinned ? "#f59e0b" : "#9ca3af"}
                     strokeWidth="1.8"
                     strokeLinejoin="round"
                     className="w-4 h-4"
@@ -1489,6 +1608,19 @@ function ChatsTab() {
             </div>
           );
         })}
+
+        {sorted.length > 0 && sorted.length < filterTotal && (
+          <button
+            type="button"
+            onClick={loadMore}
+            disabled={busyMore}
+            className={`${glassCard} w-full h-11 text-[12px] font-semibold text-gray-600 hover:text-black transition-colors cursor-pointer disabled:opacity-50`}
+          >
+            {busyMore
+              ? "Loading…"
+              : `Load ${Math.min(CHAT_PAGE, filterTotal - sorted.length)} more (${filterTotal - sorted.length} left)`}
+          </button>
+        )}
       </div>
     </div>
   );
