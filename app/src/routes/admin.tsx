@@ -512,8 +512,8 @@ function OverviewTab({ stats, go }: { stats: Stats | null; go: (tab: Tab) => voi
 
       <div className="grid md:grid-cols-2 gap-3 mt-4">
         {/* 14-day activity */}
-        <div className={`${glassCard} p-5`}>
-          <div className="flex items-center justify-between mb-4">
+        <div className={`${glassCard} p-5 flex flex-col`}>
+          <div className="flex items-center justify-between mb-1">
             <h2 className="text-sm font-bold tracking-tight">Activity · last 14 days</h2>
             <div className="flex items-center gap-3 text-[10px] text-gray-500">
               <span className="flex items-center gap-1">
@@ -526,35 +526,66 @@ function OverviewTab({ stats, go }: { stats: Stats | null; go: (tab: Tab) => voi
           </div>
           {stats ? (
             <>
-              <div className="flex items-end gap-[3px] h-[88px]">
+              <p className="text-[11px] text-gray-400 mb-4 tabular-nums">
+                {stats.daily.reduce((a, d) => a + d.chats, 0)} chats ·{" "}
+                {stats.daily.reduce((a, d) => a + d.leads, 0)} leads in this window
+              </p>
+              {/* Chart area grows to fill the card (the grid stretches both
+                  columns to equal height) instead of hugging the top. */}
+              <div className="flex-1 min-h-[140px] relative flex items-end gap-[3px] pt-6">
+                {/* horizontal gridlines */}
+                <div className="absolute inset-x-0 top-6 bottom-0 pointer-events-none" aria-hidden>
+                  {[0, 1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="absolute inset-x-0 border-t border-dashed border-black/[0.06]"
+                      style={{ top: `${i * 25}%` }}
+                    />
+                  ))}
+                  <div className="absolute inset-x-0 bottom-0 border-t border-black/10" />
+                  <span className="absolute -top-4 left-0 text-[9px] text-gray-400 tabular-nums">
+                    max {maxDay}/day
+                  </span>
+                </div>
                 {stats.daily.map((d) => (
-                  <div
-                    key={d.day}
-                    className="flex-1 flex flex-col justify-end gap-[2px] h-full group relative"
-                    title={`${d.day} — ${d.chats} chat${d.chats === 1 ? "" : "s"}, ${d.leads} lead${d.leads === 1 ? "" : "s"}`}
-                  >
+                  <div key={d.day} className="flex-1 h-full flex flex-col justify-end gap-[2px] group relative cursor-default">
+                    {/* tooltip */}
+                    <div className="hidden group-hover:flex absolute -top-1 left-1/2 -translate-x-1/2 -translate-y-full z-10 px-2 py-1 rounded-lg bg-black text-white text-[10px] font-medium whitespace-nowrap shadow-lg pointer-events-none">
+                      {d.day.slice(5).replace("-", "/")} · {d.chats} chat{d.chats === 1 ? "" : "s"} ·{" "}
+                      {d.leads} lead{d.leads === 1 ? "" : "s"}
+                    </div>
                     {d.leads > 0 && (
                       <div
-                        className="rounded-[3px] bg-amber-400 group-hover:bg-amber-500 transition-colors"
-                        style={{ height: `${(d.leads / maxDay) * 100}%`, minHeight: 4 }}
+                        className="rounded-t-[4px] rounded-b-[2px] bg-amber-400 group-hover:bg-amber-500 transition-colors"
+                        style={{ height: `${(d.leads / maxDay) * 100}%`, minHeight: 5 }}
                       />
                     )}
                     <div
-                      className={`rounded-[3px] transition-colors ${
-                        d.chats > 0 ? "bg-violet-400 group-hover:bg-violet-500" : "bg-gray-100"
+                      className={`transition-colors ${
+                        d.chats > 0
+                          ? `bg-violet-400 group-hover:bg-violet-500 rounded-b-[2px] ${d.leads > 0 ? "rounded-t-[2px]" : "rounded-t-[4px]"}`
+                          : "bg-black/[0.05] rounded-[2px]"
                       }`}
-                      style={{ height: d.chats > 0 ? `${(d.chats / maxDay) * 100}%` : 3, minHeight: d.chats > 0 ? 4 : 3 }}
+                      style={{ height: d.chats > 0 ? `${(d.chats / maxDay) * 100}%` : 3, minHeight: d.chats > 0 ? 5 : 3 }}
                     />
                   </div>
                 ))}
               </div>
-              <div className="flex justify-between mt-2 text-[10px] text-gray-400 tabular-nums">
-                <span>{stats.daily[0]?.day.slice(5).replace("-", "/")}</span>
-                <span>today</span>
+              {/* x-axis day ticks, one per column */}
+              <div className="flex gap-[3px] mt-1.5 border-t border-transparent text-[9px] text-gray-400 tabular-nums">
+                {stats.daily.map((d, i) => {
+                  const isLast = i === stats.daily.length - 1;
+                  const show = isLast || i % 3 === 0;
+                  return (
+                    <span key={d.day} className={`flex-1 text-center ${isLast ? "font-semibold text-gray-600" : ""}`}>
+                      {show ? (isLast ? "today" : d.day.slice(8)) : ""}
+                    </span>
+                  );
+                })}
               </div>
             </>
           ) : (
-            <Skeleton className="h-[88px] w-full" />
+            <Skeleton className="flex-1 min-h-[140px] w-full mt-3" />
           )}
         </div>
 
