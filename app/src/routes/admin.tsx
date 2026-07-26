@@ -683,9 +683,33 @@ const STATUS_META = {
   closed: { label: "Closed", active: "bg-gray-700 text-white" },
 } as const;
 
+// Long messages collapse so the list stays scannable.
+function LeadMessage({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = text.length > 260;
+  const shown = expanded || !isLong ? text : `${text.slice(0, 260).trimEnd()}…`;
+  return (
+    <div className="mt-3 bg-gray-50 border border-black/5 rounded-xl px-3.5 py-2.5">
+      <p className="text-[13px] text-gray-700 leading-relaxed whitespace-pre-line">{shown}</p>
+      {isLong && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1 text-[11px] font-semibold text-blue-600 hover:underline cursor-pointer"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
   const [leads, setLeads] = useState<Lead[] | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | keyof typeof STATUS_META>("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "form" | "chat">("all");
 
   useEffect(() => {
     adminListLeads().then(setLeads).catch(console.error);
@@ -726,9 +750,89 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
       </div>
     );
 
+  const q = query.trim().toLowerCase();
+  const filtered = leads.filter((l) => {
+    if (statusFilter !== "all" && l.status !== statusFilter) return false;
+    if (sourceFilter !== "all" && l.source !== sourceFilter) return false;
+    if (q && ![l.name, l.email, l.message].some((v) => v.toLowerCase().includes(q))) return false;
+    return true;
+  });
+  const countFor = (s: keyof typeof STATUS_META) => leads.filter((l) => l.status === s).length;
+
   return (
     <div className="space-y-3">
-      {leads.map((l, i) => (
+      {/* Toolbar: search + status + source filters */}
+      <div className={`${glassCard} p-3 flex flex-wrap items-center gap-2`}>
+        <div className="relative flex-1 min-w-[180px]">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+            aria-hidden
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search name, email, or message…"
+            aria-label="Search leads"
+            className="w-full h-9 rounded-full border border-black/10 bg-white pl-9 pr-3.5 text-[13px] placeholder:text-gray-400 focus:outline-none focus:border-black/30 focus:ring-2 focus:ring-black/5 transition-all"
+          />
+        </div>
+        <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Filter by status">
+          {(["all", ...Object.keys(STATUS_META)] as ("all" | keyof typeof STATUS_META)[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              aria-pressed={statusFilter === s}
+              className={`h-8 px-3 rounded-full text-[11px] font-semibold transition-all active:scale-[0.97] cursor-pointer ${
+                statusFilter === s
+                  ? s === "all"
+                    ? "bg-black text-white"
+                    : STATUS_META[s as keyof typeof STATUS_META].active
+                  : "text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              {s === "all" ? `All ${leads.length}` : `${STATUS_META[s as keyof typeof STATUS_META].label} ${countFor(s as keyof typeof STATUS_META)}`}
+            </button>
+          ))}
+        </div>
+        <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Filter by source">
+          {(
+            [
+              ["all", "Any source"],
+              ["form", "Form"],
+              ["chat", "AI chat"],
+            ] as const
+          ).map(([s, label]) => (
+            <button
+              key={s}
+              onClick={() => setSourceFilter(s)}
+              aria-pressed={sourceFilter === s}
+              className={`h-8 px-3 rounded-full text-[11px] font-semibold transition-all active:scale-[0.97] cursor-pointer ${
+                sourceFilter === s ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {filtered.length === 0 && (
+        <div className={`${glassCard} p-8 text-center`}>
+          <p className="text-sm font-semibold">No leads match</p>
+          <p className="text-[12px] text-gray-500 mt-1">Try a different search or filter.</p>
+        </div>
+      )}
+
+      {filtered.map((l, i) => (
         <motion.div
           key={l.id}
           initial={{ opacity: 0, y: 10 }}
@@ -787,9 +891,7 @@ function LeadsTab({ onStatsChange }: { onStatsChange: (s: Stats) => void }) {
             </div>
           </div>
 
-          <p className="text-[13px] text-gray-700 leading-relaxed whitespace-pre-line mt-3 bg-gray-50 border border-black/5 rounded-xl px-3.5 py-2.5">
-            {l.message}
-          </p>
+          <LeadMessage text={l.message} />
 
           <div className="flex flex-wrap items-center gap-2 mt-3">
             <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Lead status">
