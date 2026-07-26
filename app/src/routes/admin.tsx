@@ -1219,9 +1219,22 @@ function groupConversations(logs: ChatLog[]): Conversation[] {
 
 type ChatFilter = "important" | "unanswered" | "all";
 
+// Bucket a date into a human section label for the Newest sort.
+function dayLabel(date: Date): string {
+  const now = new Date();
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(now) - startOfDay(date)) / 86_400_000);
+  if (diffDays <= 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return "This week";
+  return date.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
+
 function ChatsTab() {
   const [logs, setLogs] = useState<ChatLog[] | null>(null);
   const [filter, setFilter] = useState<ChatFilter>("important");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"priority" | "newest">("priority");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -1267,11 +1280,15 @@ function ChatsTab() {
       </div>
     );
 
+  const q = query.trim().toLowerCase();
   const visible = conversations.filter((c) => {
-    if (filter === "important") return c.tags.has("lead") || c.tags.has("hiring");
-    if (filter === "unanswered") return c.tags.has("unanswered");
+    if (filter === "important" && !(c.tags.has("lead") || c.tags.has("hiring"))) return false;
+    if (filter === "unanswered" && !c.tags.has("unanswered")) return false;
+    if (q && !c.exchanges.some((e) => `${e.question}\n${e.answer}`.toLowerCase().includes(q)))
+      return false;
     return true;
   });
+  const sorted = sort === "newest" ? [...visible].sort((a, b) => +b.latest - +a.latest) : visible;
 
   const FILTERS: { id: ChatFilter; label: string; count: number }[] = [
     { id: "important", label: "Important", count: counts.important },
@@ -1281,45 +1298,98 @@ function ChatsTab() {
 
   return (
     <div>
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="Conversation filters">
-        {FILTERS.map((f) => (
-          <button
-            key={f.id}
-            onClick={() => setFilter(f.id)}
-            aria-pressed={filter === f.id}
-            className={`h-9 px-3.5 rounded-full text-[12px] font-semibold inline-flex items-center gap-1.5 transition-all active:scale-[0.98] ${
-              filter === f.id ? "bg-black text-white" : "bg-gray-100 text-gray-600 hover:text-black"
-            }`}
+      {/* Toolbar: search + filters + sort */}
+      <div className={`${glassCard} p-3 flex flex-wrap items-center gap-2 mb-4`}>
+        <div className="relative flex-1 min-w-[180px]">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+            aria-hidden
           >
-            {f.label}
-            <span
-              className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
-                filter === f.id ? "bg-white/20 text-white" : "bg-white text-gray-500"
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search questions and answers…"
+            aria-label="Search conversations"
+            className="w-full h-9 rounded-full border border-black/10 bg-white pl-9 pr-3.5 text-[13px] placeholder:text-gray-400 focus:outline-none focus:border-black/30 focus:ring-2 focus:ring-black/5 transition-all"
+          />
+        </div>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Conversation filters">
+          {FILTERS.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setFilter(f.id)}
+              aria-pressed={filter === f.id}
+              className={`h-9 px-3.5 rounded-full text-[12px] font-semibold inline-flex items-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer ${
+                filter === f.id ? "bg-black text-white" : "bg-gray-100 text-gray-600 hover:text-black"
               }`}
             >
-              {f.count}
-            </span>
-          </button>
-        ))}
+              {f.label}
+              <span
+                className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
+                  filter === f.id ? "bg-white/20 text-white" : "bg-white text-gray-500"
+                }`}
+              >
+                {f.count}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Sort conversations">
+          {(
+            [
+              ["priority", "Priority"],
+              ["newest", "Newest"],
+            ] as const
+          ).map(([s, label]) => (
+            <button
+              key={s}
+              onClick={() => setSort(s)}
+              aria-pressed={sort === s}
+              className={`h-8 px-3 rounded-full text-[11px] font-semibold transition-all active:scale-[0.97] cursor-pointer ${
+                sort === s ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {visible.length === 0 && (
+      {sorted.length === 0 && (
         <div className={`${glassCard} p-8 text-center`}>
           <p className="text-sm font-semibold">Nothing here</p>
           <p className="text-[12px] text-gray-500 mt-1">
-            No conversations match this filter yet — that's a good thing for "Couldn't answer".
+            {q
+              ? "No conversations match your search."
+              : 'No conversations match this filter yet — that\'s a good thing for "Couldn\'t answer".'}
           </p>
         </div>
       )}
 
       <div className="space-y-3">
-        {visible.map((c, i) => {
+        {sorted.map((c, i) => {
           const isOpen = expanded.has(c.key) || c.exchanges.length <= 2;
           const shown = isOpen ? c.exchanges : c.exchanges.slice(-1);
+          const label = dayLabel(c.latest);
+          const showHeader =
+            sort === "newest" && (i === 0 || dayLabel(sorted[i - 1].latest) !== label);
           return (
-            <motion.div
-              key={c.key}
+            <div key={c.key}>
+              {showHeader && (
+                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 px-1 pt-2 pb-2">
+                  {label}
+                </p>
+              )}
+              <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: Math.min(i, 6) * 0.04, ease: EASE }}
@@ -1356,6 +1426,13 @@ function ChatsTab() {
                       {log.question}
                     </p>
                   </div>
+                  {log.tag === "unanswered" && (
+                    <div className="flex justify-start mb-1">
+                      <span className="text-[10px] font-semibold text-red-600 bg-red-50 border border-red-100 rounded-full px-2 py-0.5">
+                        ⚠ Couldn't answer this one
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-start">
                     <p className="max-w-[85%] bg-gray-100 text-gray-800 text-[13px] leading-relaxed rounded-2xl rounded-bl-md px-3.5 py-2 whitespace-pre-line">
                       {log.answer}
@@ -1363,7 +1440,8 @@ function ChatsTab() {
                   </div>
                 </div>
               ))}
-            </motion.div>
+              </motion.div>
+            </div>
           );
         })}
       </div>
