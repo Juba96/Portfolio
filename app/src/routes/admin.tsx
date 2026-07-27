@@ -1426,9 +1426,15 @@ function ChatsTab({
   const [query, setQuery] = useState("");
   const [q, setQ] = useState(""); // debounced
   const [sort, setSort] = useState<"priority" | "newest">("priority");
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Inbox layout: which thread is open. null = none chosen explicitly
+  // (desktop falls back to the first in the list; mobile shows the list).
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [busyMore, setBusyMore] = useState(false);
   const [landed, setLanded] = useState(false);
+
+  useEffect(() => {
+    setSelectedKey(null);
+  }, [q, filter, sort]);
 
   useEffect(() => {
     const t = setTimeout(() => setQ(query.trim()), 300);
@@ -1644,62 +1650,148 @@ function ChatsTab({
         </div>
       )}
 
-      <div className="space-y-3">
-        {sorted.map((c, i) => {
-          const isOpen = expanded.has(c.key) || c.exchanges.length <= 2;
-          const shown = isOpen ? c.exchanges : c.exchanges.slice(-1);
-          const label = dayLabel(c.latest);
-          const showHeader =
-            sort === "newest" && (i === 0 || dayLabel(sorted[i - 1].latest) !== label);
-          return (
-            <div key={c.key}>
-              {showHeader && (
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 px-1 pt-2 pb-2">
-                  {label}
+      {sorted.length > 0 && (() => {
+        const selected = sorted.find((c) => c.key === selectedKey) ?? sorted[0];
+        // On mobile the list and the thread swap; on desktop both show.
+        const mobileThreadOpen = selectedKey !== null;
+        const TAG_DOT: Record<string, string> = {
+          lead: "#22c55e",
+          hiring: "#f59e0b",
+          unanswered: "#ef4444",
+        };
+        return (
+          <div className="grid md:grid-cols-[minmax(260px,320px)_1fr] gap-3 items-start">
+            {/* Conversation list */}
+            <div
+              className={`${glassCard} p-1.5 md:max-h-[68vh] md:overflow-y-auto ${
+                mobileThreadOpen ? "hidden md:block" : ""
+              }`}
+            >
+              {sorted.map((c, i) => {
+                const label = dayLabel(c.latest);
+                const showHeader =
+                  sort === "newest" && (i === 0 || dayLabel(sorted[i - 1].latest) !== label);
+                const lastQ = c.exchanges[c.exchanges.length - 1]?.question ?? "…";
+                const active = selected.key === c.key;
+                return (
+                  <div key={c.key}>
+                    {showHeader && (
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-2.5 pt-2.5 pb-1">
+                        {label}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedKey(c.key);
+                        setPendingDelete(null);
+                      }}
+                      aria-current={active}
+                      className={`w-full text-left px-3 py-2.5 rounded-xl transition-colors cursor-pointer ${
+                        active ? "bg-black" : "hover:bg-black/[0.04]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        {c.pinned && (
+                          <svg viewBox="0 0 24 24" fill="#f59e0b" className="w-3 h-3 shrink-0" aria-label="Starred">
+                            <path d="m12 3 2.7 5.6 6.3.9-4.5 4.3 1 6.2-5.5-3-5.5 3 1-6.2L3 9.5l6.3-.9Z" />
+                          </svg>
+                        )}
+                        {[...c.tags].map((t) => (
+                          <span
+                            key={t}
+                            className="w-1.5 h-1.5 rounded-full shrink-0"
+                            style={{ background: TAG_DOT[t] ?? "#9ca3af" }}
+                            title={TAG_META[t]?.label ?? t}
+                          />
+                        ))}
+                        <span
+                          className={`text-[12px] font-semibold truncate ${active ? "text-white" : "text-gray-800"}`}
+                        >
+                          {lastQ}
+                        </span>
+                        <span
+                          className={`text-[10px] shrink-0 ml-auto tabular-nums ${
+                            active ? "text-white/50" : "text-gray-400"
+                          }`}
+                          title={c.latest.toLocaleString()}
+                        >
+                          {timeAgo(c.latest)}
+                        </span>
+                      </div>
+                      <p
+                        className={`text-[11px] truncate mt-0.5 ${active ? "text-white/60" : "text-gray-400"}`}
+                      >
+                        {c.leadEmail ? `${c.leadEmail} · ` : ""}
+                        {c.exchangeCount} {c.exchangeCount === 1 ? "exchange" : "exchanges"}
+                      </p>
+                    </button>
+                  </div>
+                );
+              })}
+
+              {sorted.length < filterTotal ? (
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  disabled={busyMore}
+                  className="w-full h-9 mt-1 rounded-xl bg-gray-50 border border-black/5 text-[11px] font-medium text-gray-500 hover:text-black hover:border-black/15 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {busyMore ? "Loading…" : `Load more (${filterTotal - sorted.length} left)`}
+                </button>
+              ) : (
+                <p className="text-center text-[10px] text-gray-400 py-2">
+                  All {filterTotal} loaded
                 </p>
               )}
-              <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: Math.min(i, 6) * 0.04, ease: EASE }}
-              className={`${glassCard} p-4 md:p-5`}
-            >
-              {/* Conversation header */}
-              <div className="flex flex-wrap items-center gap-1.5 mb-3 text-[11px]">
-                {[...c.tags].map((t) => (
+            </div>
+
+            {/* Thread pane */}
+            <div className={`${glassCard} p-4 md:p-5 ${mobileThreadOpen ? "" : "hidden md:block"}`}>
+              <button
+                type="button"
+                onClick={() => setSelectedKey(null)}
+                className="md:hidden mb-3 text-[12px] font-semibold text-gray-500 hover:text-black cursor-pointer"
+              >
+                ← All conversations
+              </button>
+
+              {/* Thread header */}
+              <div className="flex flex-wrap items-center gap-1.5 pb-3 mb-3 border-b border-black/5 text-[11px]">
+                {[...selected.tags].map((t) => (
                   <span key={t} className={`px-2 py-0.5 rounded-full font-semibold ${TAG_META[t]?.cls ?? ""}`}>
                     {TAG_META[t]?.label ?? t}
                   </span>
                 ))}
-                {c.leadEmail && (
+                {selected.leadEmail && (
                   <button
                     type="button"
-                    onClick={() => openLead(c.leadEmail!)}
+                    onClick={() => openLead(selected.leadEmail!)}
                     title="Open this lead in the Leads tab"
                     className="px-2 py-0.5 rounded-full font-semibold bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors cursor-pointer inline-flex items-center gap-1 max-w-[220px]"
                   >
-                    <span className="truncate">{c.leadEmail}</span>
+                    <span className="truncate">{selected.leadEmail}</span>
                     <span aria-hidden>→</span>
                   </button>
                 )}
                 <span className="px-2 py-0.5 rounded-full bg-gray-100 font-semibold text-gray-600">
-                  {c.exchangeCount} {c.exchangeCount === 1 ? "exchange" : "exchanges"}
+                  {selected.exchangeCount} {selected.exchangeCount === 1 ? "exchange" : "exchanges"}
                 </span>
-                <span className="text-gray-400 ml-auto" title={c.latest.toLocaleString()}>
-                  {timeAgo(c.latest)}
+                <span className="text-gray-400 ml-auto" title={selected.latest.toLocaleString()}>
+                  {timeAgo(selected.latest)}
                 </span>
                 <button
                   type="button"
-                  onClick={() => togglePin(c.key)}
-                  aria-pressed={c.pinned}
-                  aria-label={c.pinned ? "Unstar conversation" : "Star conversation"}
-                  title={c.pinned ? "Unstar — drop from the top" : "Star — keep on top of Priority"}
+                  onClick={() => togglePin(selected.key)}
+                  aria-pressed={selected.pinned}
+                  aria-label={selected.pinned ? "Unstar conversation" : "Star conversation"}
+                  title={selected.pinned ? "Unstar — drop from the top" : "Star — keep on top of Priority"}
                   className="w-7 h-7 -my-1 rounded-lg flex items-center justify-center hover:bg-gray-50 transition-colors cursor-pointer"
                 >
                   <svg
                     viewBox="0 0 24 24"
-                    fill={c.pinned ? "#f59e0b" : "none"}
-                    stroke={c.pinned ? "#f59e0b" : "#9ca3af"}
+                    fill={selected.pinned ? "#f59e0b" : "none"}
+                    stroke={selected.pinned ? "#f59e0b" : "#9ca3af"}
                     strokeWidth="1.8"
                     strokeLinejoin="round"
                     className="w-4 h-4"
@@ -1708,10 +1800,10 @@ function ChatsTab({
                     <path d="m12 3 2.7 5.6 6.3.9-4.5 4.3 1 6.2-5.5-3-5.5 3 1-6.2L3 9.5l6.3-.9Z" />
                   </svg>
                 </button>
-                {pendingDelete === c.key ? (
+                {pendingDelete === selected.key ? (
                   <button
                     type="button"
-                    onClick={() => removeConversation(c.key)}
+                    onClick={() => removeConversation(selected.key)}
                     className="h-7 px-2.5 -my-1 rounded-lg bg-red-600 text-white text-[10px] font-bold hover:bg-red-700 transition-colors cursor-pointer"
                   >
                     Delete?
@@ -1719,7 +1811,7 @@ function ChatsTab({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setPendingDelete(c.key)}
+                    onClick={() => setPendingDelete(selected.key)}
                     aria-label="Delete conversation"
                     title="Delete this conversation"
                     className="w-7 h-7 -my-1 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
@@ -1731,67 +1823,42 @@ function ChatsTab({
                 )}
               </div>
 
-              {!isOpen && (
-                <button
-                  onClick={() => setExpanded((prev) => new Set(prev).add(c.key))}
-                  className="w-full mb-2 h-8 rounded-xl bg-gray-50 border border-black/5 text-[11px] font-medium text-gray-500 hover:text-black hover:border-black/15 transition-colors"
-                >
-                  Show {c.exchanges.length - 1} earlier {c.exchanges.length - 1 === 1 ? "exchange" : "exchanges"} ↑
-                </button>
-              )}
-
-              {shown.map((log) => (
-                <div key={log.id} className="mb-2 last:mb-0">
-                  <div className="flex justify-end mb-1.5">
-                    <p className="max-w-[85%] bg-blue-500 text-white text-[13px] leading-relaxed rounded-2xl rounded-br-md px-3.5 py-2 whitespace-pre-line">
-                      {log.question}
-                    </p>
-                  </div>
-                  {log.tag === "unanswered" && (
-                    <div className="flex justify-start items-center gap-2 mb-1">
-                      <span className="text-[10px] font-semibold text-red-600 bg-red-50 border border-red-100 rounded-full px-2 py-0.5">
-                        ⚠ Couldn't answer this one
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => teach(log.question)}
-                        title="Add the answer to the AI's knowledge in Content"
-                        className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer"
-                      >
-                        Teach the AI →
-                      </button>
+              {/* Full thread */}
+              <div className="max-h-[56vh] overflow-y-auto pr-1">
+                {selected.exchanges.map((log) => (
+                  <div key={log.id} className="mb-2.5 last:mb-0">
+                    <div className="flex justify-end mb-1.5">
+                      <p className="max-w-[85%] bg-blue-500 text-white text-[13px] leading-relaxed rounded-2xl rounded-br-md px-3.5 py-2 whitespace-pre-line">
+                        {log.question}
+                      </p>
                     </div>
-                  )}
-                  <div className="flex justify-start">
-                    <p className="max-w-[85%] bg-gray-100 text-gray-800 text-[13px] leading-relaxed rounded-2xl rounded-bl-md px-3.5 py-2 whitespace-pre-line">
-                      {log.answer}
-                    </p>
+                    {log.tag === "unanswered" && (
+                      <div className="flex justify-start items-center gap-2 mb-1">
+                        <span className="text-[10px] font-semibold text-red-600 bg-red-50 border border-red-100 rounded-full px-2 py-0.5">
+                          ⚠ Couldn't answer this one
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => teach(log.question)}
+                          title="Add the answer to the AI's knowledge in Content"
+                          className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer"
+                        >
+                          Teach the AI →
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex justify-start">
+                      <p className="max-w-[85%] bg-gray-100 text-gray-800 text-[13px] leading-relaxed rounded-2xl rounded-bl-md px-3.5 py-2 whitespace-pre-line">
+                        {log.answer}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
-              </motion.div>
+                ))}
+              </div>
             </div>
-          );
-        })}
-
-        {sorted.length > 0 &&
-          (sorted.length < filterTotal ? (
-            <button
-              type="button"
-              onClick={loadMore}
-              disabled={busyMore}
-              className={`${glassCard} w-full h-11 text-[12px] font-semibold text-gray-600 hover:text-black transition-colors cursor-pointer disabled:opacity-50`}
-            >
-              {busyMore
-                ? "Loading…"
-                : `Load ${Math.min(CHAT_PAGE, filterTotal - sorted.length)} more (${filterTotal - sorted.length} left)`}
-            </button>
-          ) : (
-            <p className="text-center text-[11px] text-gray-400 py-2">
-              All {filterTotal} {filterTotal === 1 ? "conversation" : "conversations"} loaded
-            </p>
-          ))}
-      </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
