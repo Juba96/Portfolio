@@ -875,10 +875,12 @@ function PipelineCard({
   onMove: (id: number, status: (typeof STATUS_ORDER)[number]) => void;
 }) {
   const idx = STATUS_ORDER.indexOf(lead.status as (typeof STATUS_ORDER)[number]);
+  const named = lead.name && lead.name !== "Chat visitor" ? lead.name : null;
+  const topic = topicOf(lead.message);
   return (
     <div className="bg-white rounded-xl border border-black/10 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.08)] p-3">
       <div className="flex items-center gap-1.5">
-        <span className="text-[12px] font-bold truncate">{lead.name}</span>
+        <span className="text-[12px] font-bold truncate">{named ?? lead.email}</span>
         <span
           className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold shrink-0 ${
             lead.source === "chat" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
@@ -890,9 +892,15 @@ function PipelineCard({
           {timeAgo(lead.createdAt)}
         </span>
       </div>
-      <a href={`mailto:${lead.email}`} className="block text-[11px] text-blue-600 hover:underline truncate mt-0.5">
-        {lead.email}
-      </a>
+      {named ? (
+        <a href={`mailto:${lead.email}`} className="block text-[11px] text-blue-600 hover:underline truncate mt-0.5">
+          {lead.email}
+        </a>
+      ) : (
+        topic && (
+          <p className="text-[10px] font-semibold text-violet-600 truncate mt-0.5">{topic}</p>
+        )
+      )}
       <p className="text-[11px] text-gray-500 mt-1 line-clamp-2 leading-snug">{lead.message}</p>
       {lead.notes && (
         <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 mt-1.5 line-clamp-2">
@@ -1278,56 +1286,89 @@ function LeadsTab({
           transition={{ duration: 0.3, delay: Math.min(i, 6) * 0.04, ease: EASE }}
           className={`${glassCard} p-4 md:p-5`}
         >
-          <div className="flex items-start gap-3">
-            {/* Avatar initial */}
-            <div className="w-10 h-10 rounded-full bg-gray-100 border border-black/5 flex items-center justify-center text-sm font-bold text-gray-600 shrink-0">
-              {(l.name || l.email)[0]?.toUpperCase()}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span className="font-bold text-sm truncate">{l.name}</span>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                    l.source === "chat" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
-                  }`}
-                >
-                  {l.source === "chat" ? "AI chat" : "Form"}
-                </span>
-                {l.autoRepliedAt && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700">
-                    auto-replied ✓
-                  </span>
-                )}
-                <span
-                  className="text-[11px] text-gray-400 ml-auto shrink-0"
-                  title={new Date(l.createdAt).toLocaleString()}
-                >
-                  {timeAgo(l.createdAt)}
-                </span>
-              </div>
-              <div className="flex items-center gap-1 mt-0.5">
-                <a href={`mailto:${l.email}`} className="text-[13px] text-blue-600 hover:underline truncate">
-                  {l.email}
-                </a>
-                <button
-                  onClick={() => copyEmail(l.id, l.email)}
-                  aria-label="Copy email address"
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors shrink-0"
-                >
-                  {copied === l.id ? (
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden>
-                      <path d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : (
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden>
-                      <rect x="9" y="9" width="11" height="11" rx="2" />
-                      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
-                    </svg>
+          {(() => {
+            // Identity-first (same rules as the Chats inbox): a real name
+            // wins, otherwise the email IS the identity — never "Chat visitor".
+            const named = l.name && l.name !== "Chat visitor" ? l.name : null;
+            const identity = named ?? l.email;
+            const topic = topicOf(l.message);
+            return (
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-green-100 border border-black/5 flex items-center justify-center text-sm font-bold text-green-700 shrink-0">
+                  {identity[0]?.toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-bold text-sm truncate max-w-[260px]">{identity}</span>
+                    {!named && (
+                      <button
+                        onClick={() => copyEmail(l.id, l.email)}
+                        aria-label="Copy email address"
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors shrink-0 cursor-pointer"
+                      >
+                        {copied === l.id ? (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden>
+                            <path d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden>
+                            <rect x="9" y="9" width="11" height="11" rx="2" />
+                            <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
+                    {topic && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-100">
+                        {topic}
+                      </span>
+                    )}
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                        l.source === "chat" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
+                      }`}
+                    >
+                      {l.source === "chat" ? "AI chat" : "Form"}
+                    </span>
+                    {l.autoRepliedAt && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700">
+                        auto-replied ✓
+                      </span>
+                    )}
+                    <span
+                      className="text-[11px] text-gray-400 ml-auto shrink-0"
+                      title={new Date(l.createdAt).toLocaleString()}
+                    >
+                      {timeAgo(l.createdAt)}
+                    </span>
+                  </div>
+                  {named && (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <a href={`mailto:${l.email}`} className="text-[13px] text-blue-600 hover:underline truncate">
+                        {l.email}
+                      </a>
+                      <button
+                        onClick={() => copyEmail(l.id, l.email)}
+                        aria-label="Copy email address"
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors shrink-0 cursor-pointer"
+                      >
+                        {copied === l.id ? (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden>
+                            <path d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden>
+                            <rect x="9" y="9" width="11" height="11" rx="2" />
+                            <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
                   )}
-                </button>
+                </div>
               </div>
-            </div>
-          </div>
+            );
+          })()}
 
           {l.sessionId ? <LeadChatThread lead={l} /> : <LeadMessage text={l.message} />}
 
