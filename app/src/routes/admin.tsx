@@ -2539,6 +2539,25 @@ function ContentTab() {
                   }}
                 />
               </div>
+              <div>
+                <label className={labelCls}>Tech stack (comma separated)</label>
+                <input
+                  className={fieldCls}
+                  value={p.stack.join(", ")}
+                  placeholder="React, TypeScript, PostgreSQL…"
+                  onChange={(e) => {
+                    const projects = [...content.projects];
+                    projects[i] = {
+                      ...p,
+                      stack: e.target.value
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                    };
+                    set({ projects });
+                  }}
+                />
+              </div>
               {/* App screens shown inside the iPhone frame (first = cover). */}
               <div>
                 <label className={labelCls}>Screens ({p.screens.length})</label>

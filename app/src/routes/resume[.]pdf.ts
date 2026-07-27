@@ -147,6 +147,10 @@ async function buildResumePdf(): Promise<Uint8Array> {
       });
       gap(2);
       para(project.overviewDesc || project.desc, { size: 9, leading: 1.45 });
+      if (project.stack.length > 0) {
+        gap(1);
+        para(`Stack: ${project.stack.join(", ")}`, { size: 8, color: GRAY, leading: 1.4 });
+      }
     }
   }
 

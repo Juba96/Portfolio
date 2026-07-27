@@ -12,6 +12,9 @@ export const projectSchema = z.object({
   color: z.string(), // tailwind gradient classes for the switcher pill
   desc: z.string(),
   overviewDesc: z.string(), // denser wording used on /overview + resume
+  // Technologies the project is built with — chips on the site, a line on
+  // the resume, and facts for the AI agent.
+  stack: z.array(z.string()).default([]),
   screens: z.array(z.string()),
   screenInsetTop: z.number().optional(),
   frameIsland: z.boolean().optional(),

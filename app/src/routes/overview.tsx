@@ -126,6 +126,11 @@ function OverviewPage() {
                   </div>
                   <p className="text-[11px] font-medium text-gray-400 mt-0.5">{p.tag}</p>
                   <p className="text-[13px] leading-snug text-gray-600 mt-1.5">{p.overviewDesc}</p>
+                  {p.stack.length > 0 && (
+                    <p className="text-[11px] leading-snug text-gray-400 mt-1.5">
+                      {p.stack.join(" · ")}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}

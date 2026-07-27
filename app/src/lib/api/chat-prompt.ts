@@ -8,7 +8,10 @@ import type { SiteContent } from "@/content/schema";
 
 function buildProfile(c: SiteContent): string {
   const projects = c.projects
-    .map((p) => `- ${p.title} (${p.subtitle}) — ${p.overviewDesc}`)
+    .map(
+      (p) =>
+        `- ${p.title} (${p.subtitle}) — ${p.overviewDesc}${p.stack.length ? ` Tech stack: ${p.stack.join(", ")}.` : ""}`,
+    )
     .join("\n");
   const experience = c.experience
     .map((e) => `- ${e.role} at ${e.org} (${e.period}): ${e.desc}`)

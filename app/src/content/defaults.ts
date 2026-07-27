@@ -24,6 +24,7 @@ export const DEFAULT_CONTENT: SiteContent = {
       desc: "Arabic-first trivia game — timed questions, monthly leaderboards, and real prizes like phones and cash, with game tokens paid via carrier billing.",
       overviewDesc:
         "Arabic-first speed-quiz PWA with real prizes; game tokens paid via Direct Carrier Billing. Claude Partner Network POC, prepared for launch on Zain Iraq.",
+      stack: ["React", "TypeScript", "Vite PWA", "Express", "PostgreSQL (Neon)", "Drizzle ORM", "Redis", "Tailwind CSS", "Direct Carrier Billing"],
       screens: [
         "/assets/quizq/screens/home-light.png",
         "/assets/quizq/screens/game-light.png",
@@ -40,6 +41,7 @@ export const DEFAULT_CONTENT: SiteContent = {
       desc: "Car-wash subscriptions for Iraq — wash plans, live queue tracking with Dynamic Island updates, nearby partner shops, and mobile-wallet payments.",
       overviewDesc:
         "Car-wash subscription platform for Iraq — plans redeemable across partner shops, live queue tracking, Wayl payments with FIB / ZainCash settlement.",
+      stack: ["React Native + Expo", "React", "TypeScript", "Express.js", "PostgreSQL (Neon)", "WebSockets", "Wayl / FIB / ZainCash payments"],
       screens: [
         "/assets/ramba/screens/home.png",
         "/assets/ramba/screens/queue.png",
@@ -56,6 +58,7 @@ export const DEFAULT_CONTENT: SiteContent = {
       desc: "AI assistant for Ooredoo subscribers — bilingual chat, balance and data queries, image generation, and daily or weekly plans billed straight to phone credit.",
       overviewDesc:
         "AI-powered VAS & customer-acquisition engine — MVP delivered to Ooredoo Tunisia and Algeria. Bilingual chat, balance queries, plans billed to phone credit.",
+      stack: ["Next.js", "TypeScript", "Vercel AI SDK", "LiteLLM", "Better Auth", "PostgreSQL (Neon)", "Drizzle ORM", "Redis", "Tailwind CSS"],
       screens: [
         "/assets/ooredooai/screens/chat.png",
         "/assets/ooredooai/screens/balance.png",
@@ -72,6 +75,7 @@ export const DEFAULT_CONTENT: SiteContent = {
       desc: "AI-driven travel content app that generates cinematic destination media through generative-AI video, voice, and character-driven storytelling.",
       overviewDesc:
         "AI-driven travel content app generating cinematic destination media with generative video, voice, and character-driven storytelling.",
+      stack: ["Next.js PWA", "TypeScript", "Vercel AI SDK", "Mapbox GL", "Three.js", "Drizzle ORM", "next-intl (Arabic-first)", "DCB / SDP integration"],
       screens: [],
     },
   ],

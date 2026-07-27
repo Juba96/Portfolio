@@ -775,6 +775,18 @@ function ProjectsView({ projects }: { projects: Project[] }) {
             </div>
             <h3 className="font-bold text-xl md:text-2xl mb-2">{p.title}</h3>
             <p className="text-xs md:text-sm text-gray-500 leading-relaxed">{p.desc}</p>
+            {p.stack.length > 0 && (
+              <div className="flex flex-wrap justify-center md:justify-start gap-1.5 mt-3">
+                {p.stack.map((tech) => (
+                  <span
+                    key={tech}
+                    className="px-2 py-0.5 rounded-full bg-gray-100 border border-black/5 text-[10px] font-medium text-gray-600"
+                  >
+                    {tech}
+                  </span>
+                ))}
+              </div>
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
