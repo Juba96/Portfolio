@@ -388,6 +388,26 @@ export const adminListConversations = createServerFn({ method: "GET" })
     return { page, counts, exchanges };
   });
 
+// Remove a whole conversation (its exchanges + pin). Used to clean up test
+// chats and noise from the dashboard.
+export const adminDeleteConversation = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ key: z.string().min(1).max(64) }))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const d = db();
+    if (data.key.startsWith("legacy-")) {
+      const id = Number(data.key.slice(7));
+      if (Number.isFinite(id))
+        await d
+          .delete(schema.chatLogs)
+          .where(and(isNull(schema.chatLogs.sessionId), eq(schema.chatLogs.id, id)));
+    } else {
+      await d.delete(schema.chatLogs).where(eq(schema.chatLogs.sessionId, data.key));
+    }
+    await d.delete(schema.pinnedConversations).where(eq(schema.pinnedConversations.key, data.key));
+    return { ok: true };
+  });
+
 export const adminListChatLogs = createServerFn({ method: "GET" }).handler(async () => {
   await requireAdmin();
   return db().select().from(schema.chatLogs).orderBy(desc(schema.chatLogs.createdAt)).limit(150);

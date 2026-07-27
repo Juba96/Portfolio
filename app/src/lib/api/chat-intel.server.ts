@@ -15,16 +15,12 @@ const EMAIL_IN_TEXT = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
 const HIRING_RE =
   /\b(hire|hiring|job|recruit|freelance|collaborat|partner|project|budget|price|pricing|cost|quote|rate|work (with|together)|consult|opportunit|available|availability)\b|توظيف|وظيف|مشروع|تعاون|سعر|تكلفة|ميزانية|شراكة|استشار/i;
 
-// Signals the AI declined/deflected — the visitor asked something the
-// profile can't answer or that's off-topic. These are content gaps worth
-// reviewing. Heuristic, so it errs on the side of catching redirects.
-const UNANSWERED_RE =
-  /\b(i (don'?t|do not) (know|have)|not something i|can'?t (answer|help with|share)|don'?t have (that|this|the) (info|information|detail)|reach out directly|outside (of )?my|unrelated to|i focus on|my (mind|focus) is (usually )?on|i('?m| am) all about|i (mainly|only|usually) (talk|answer|discuss)|let'?s (talk|stick to)|stick to|happy to (chat|talk) about my)\b|لا أعرف|ليس لدي|لا أستطيع|خارج نطاق|أركز على/i;
-
-function classify(question: string, answer: string): string {
+// "Couldn't answer" detection now relies solely on the model's own
+// [[offtopic]] marker (passed in as forcedTag) — the old answer-phrase
+// regex flagged healthy replies like "reach out directly at …" as gaps.
+function classify(question: string): string {
   if (EMAIL_IN_TEXT.test(question)) return "lead";
   if (HIRING_RE.test(question)) return "hiring";
-  if (UNANSWERED_RE.test(answer)) return "unanswered";
   return "general";
 }
 
@@ -42,10 +38,10 @@ export function logChatExchange(
       answer: answer.slice(0, 8000),
       provider,
       sessionId: sessionId?.slice(0, 40) ?? null,
-      // The model's own off-topic marker beats the regex heuristics, but a
-      // lead/hiring signal in the question still wins.
+      // A lead/hiring signal in the question wins; otherwise the model's
+      // own off-topic marker (forcedTag) decides "unanswered".
       tag: (() => {
-        const heuristic = classify(question, answer);
+        const heuristic = classify(question);
         if (heuristic === "lead" || heuristic === "hiring") return heuristic;
         return forcedTag ?? heuristic;
       })(),

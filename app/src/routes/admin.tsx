@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "motion/react";
 
 import type { SiteContent } from "@/content/schema";
 import QRCode from "qrcode";
@@ -17,6 +17,7 @@ import {
 } from "@/lib/api/admin-auth.functions";
 import {
   adminChatSession,
+  adminDeleteConversation,
   adminGetContent,
   adminListChatLogs,
   adminListConversations,
@@ -344,6 +345,8 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [stats, setStats] = useState<Stats | null>(null);
   // Set when another tab wants Leads opened pre-filtered (e.g. a chat's lead).
   const [leadsPreset, setLeadsPreset] = useState<string | null>(null);
+  // Set when Chats sends an unanswered question to Content → AI knowledge.
+  const [teachQuestion, setTeachQuestion] = useState<string | null>(null);
 
   useEffect(() => {
     adminStats().then(setStats).catch(console.error);
@@ -405,15 +408,16 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         })}
       </div>
 
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={tab}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={{ duration: 0.25, ease: EASE }}
-        >
-          {tab === "overview" && <OverviewTab stats={stats} go={setTab} />}
+      {/* No exit animation / AnimatePresence here: mode="wait" blocks the next
+          tab until the fade-out finishes, and browsers pause animation frames
+          in background tabs — which froze the dashboard mid-switch. */}
+      <motion.div
+        key={tab}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: EASE }}
+      >
+        {tab === "overview" && <OverviewTab stats={stats} go={setTab} />}
           {tab === "leads" && (
             <LeadsTab
               onStatsChange={setStats}
@@ -427,12 +431,20 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 setLeadsPreset(email);
                 setTab("leads");
               }}
+              teach={(question) => {
+                setTeachQuestion(question);
+                setTab("content");
+              }}
             />
           )}
-          {tab === "content" && <ContentTab />}
+          {tab === "content" && (
+            <ContentTab
+              teachQuestion={teachQuestion}
+              onTeachConsumed={() => setTeachQuestion(null)}
+            />
+          )}
           {tab === "security" && <SecurityTab />}
-        </motion.div>
-      </AnimatePresence>
+      </motion.div>
     </motion.div>
   );
 }
@@ -1397,7 +1409,13 @@ function dayLabel(date: Date): string {
 
 const CHAT_PAGE = 15;
 
-function ChatsTab({ openLead }: { openLead: (email: string) => void }) {
+function ChatsTab({
+  openLead,
+  teach,
+}: {
+  openLead: (email: string) => void;
+  teach: (question: string) => void;
+}) {
   // Server-driven: grouping, tagging, search, sort, and pagination all run
   // in the database (adminListConversations); the browser only holds the
   // loaded pages.
@@ -1455,7 +1473,26 @@ function ChatsTab({ openLead }: { openLead: (email: string) => void }) {
     const wasPinned = meta?.find((c) => c.key === key)?.pinned ?? false;
     setMeta((m) => m?.map((c) => (c.key === key ? { ...c, pinned: !c.pinned } : c)) ?? null);
     setCounts((c) => ({ ...c, starred: Math.max(0, c.starred + (wasPinned ? -1 : 1)) }));
+    setPendingDelete(null);
     adminTogglePin({ data: { key } }).catch(console.error);
+  };
+
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+
+  // Two-step delete: first click arms the button, second click removes the
+  // conversation (optimistically) and tells the server.
+  const removeConversation = (key: string) => {
+    const conv = meta?.find((c) => c.key === key);
+    if (!conv) return;
+    setMeta((m) => m?.filter((c) => c.key !== key) ?? null);
+    setCounts((c) => ({
+      important: Math.max(0, c.important - (conv.has_lead || conv.has_hiring ? 1 : 0)),
+      starred: Math.max(0, c.starred - (conv.pinned ? 1 : 0)),
+      unanswered: Math.max(0, c.unanswered - (conv.has_unanswered ? 1 : 0)),
+      total: Math.max(0, c.total - 1),
+    }));
+    setPendingDelete(null);
+    adminDeleteConversation({ data: { key } }).catch(console.error);
   };
 
   const filterTotal =
@@ -1671,6 +1708,27 @@ function ChatsTab({ openLead }: { openLead: (email: string) => void }) {
                     <path d="m12 3 2.7 5.6 6.3.9-4.5 4.3 1 6.2-5.5-3-5.5 3 1-6.2L3 9.5l6.3-.9Z" />
                   </svg>
                 </button>
+                {pendingDelete === c.key ? (
+                  <button
+                    type="button"
+                    onClick={() => removeConversation(c.key)}
+                    className="h-7 px-2.5 -my-1 rounded-lg bg-red-600 text-white text-[10px] font-bold hover:bg-red-700 transition-colors cursor-pointer"
+                  >
+                    Delete?
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setPendingDelete(c.key)}
+                    aria-label="Delete conversation"
+                    title="Delete this conversation"
+                    className="w-7 h-7 -my-1 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="w-3.5 h-3.5" aria-hidden>
+                      <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                    </svg>
+                  </button>
+                )}
               </div>
 
               {!isOpen && (
@@ -1690,10 +1748,18 @@ function ChatsTab({ openLead }: { openLead: (email: string) => void }) {
                     </p>
                   </div>
                   {log.tag === "unanswered" && (
-                    <div className="flex justify-start mb-1">
+                    <div className="flex justify-start items-center gap-2 mb-1">
                       <span className="text-[10px] font-semibold text-red-600 bg-red-50 border border-red-100 rounded-full px-2 py-0.5">
                         ⚠ Couldn't answer this one
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => teach(log.question)}
+                        title="Add the answer to the AI's knowledge in Content"
+                        className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer"
+                      >
+                        Teach the AI →
+                      </button>
                     </div>
                   )}
                   <div className="flex justify-start">
@@ -2256,17 +2322,36 @@ function SectionCard({
   );
 }
 
-function ContentTab() {
+function ContentTab({
+  teachQuestion,
+  onTeachConsumed,
+}: {
+  teachQuestion?: string | null;
+  onTeachConsumed?: () => void;
+}) {
   const [content, setContent] = useState<SiteContent | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<string>("");
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [storageReady, setStorageReady] = useState(false);
 
+  // Question handed over from Chats ("Teach the AI"). Kept in a ref and
+  // applied to every content fetch result: StrictMode double-fires load(),
+  // and the second resolve would otherwise clobber an appended draft.
+  const teachRef = useRef<string | null>(null);
+  if (teachQuestion) teachRef.current = teachQuestion;
+
+  const applyTeach = (c: SiteContent): SiteContent => {
+    const q = teachRef.current;
+    if (!q || c.chatFacts.includes(`Q: ${q}`)) return c;
+    return { ...c, chatFacts: `${c.chatFacts.trimEnd()}\n\nQ: ${q}\nA: ` };
+  };
+
   const load = () => {
     adminGetContent()
       .then((c) => {
-        setContent(c);
+        setContent(applyTeach(c));
+        // Snapshot the SERVER version, so a teach scaffold counts as dirty.
         setSavedSnapshot(JSON.stringify(c));
       })
       .catch(console.error);
@@ -2276,6 +2361,22 @@ function ContentTab() {
       .catch(() => setStorageReady(false));
   };
   useEffect(load, []);
+
+  // Once content is on screen with a pending teach question: scroll to the
+  // AI-knowledge box, focus it, and tell the dashboard it's been handled.
+  useEffect(() => {
+    if (!teachQuestion || !content) return;
+    onTeachConsumed?.();
+    setTimeout(() => {
+      const el = document.getElementById("chatfacts-input") as HTMLTextAreaElement | null;
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      }
+    }, 350);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teachQuestion, content === null]);
 
   const dirty = useMemo(
     () => content !== null && JSON.stringify(content) !== savedSnapshot,
@@ -2771,6 +2872,7 @@ function ContentTab() {
             Only the chatbot sees this — metrics, FAQs, anything it should know.
           </p>
           <textarea
+            id="chatfacts-input"
             className={`${fieldCls} resize-y`}
             rows={4}
             value={content.chatFacts}
