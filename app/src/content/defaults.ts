@@ -133,6 +133,20 @@ export const DEFAULT_CONTENT: SiteContent = {
         "Mobile Payments",
       ],
     },
+    {
+      name: "AI Tools",
+      icon: "🤖",
+      skills: [
+        "Claude Code (agentic development)",
+        "Cursor",
+        "Anthropic Claude API",
+        "Google Gemini",
+        "Groq / DeepSeek",
+        "Vercel AI SDK",
+        "LiteLLM",
+        "Prompt & agent design",
+      ],
+    },
   ],
   overviewSkills: [
     "Direct Carrier Billing",
@@ -141,6 +155,7 @@ export const DEFAULT_CONTENT: SiteContent = {
     "Mobile Payments",
     "API Integrations & Onboarding",
     "AI Product Development",
+    "AI-Assisted Engineering (Claude Code, Cursor)",
     "Stakeholder Management",
     "Project Delivery",
     "Arabic (native) · English (professional)",
@@ -175,7 +190,7 @@ export const DEFAULT_CONTENT: SiteContent = {
     location: "Baghdad, Iraq",
   },
   chatFacts:
-    "QuizQ is the flagship POC for the Anthropic Claude Partner Network. Ramba integrates the Wayl payment API with automated settlement via FIB / ZainCash. OoredooAI includes AI-driven lead scoring and CPA optimization. Also led the Ooredoo Algeria Mega Promo Service launch and the Khalaspay carrier billing integration.",
+    "QuizQ is the flagship POC for the Anthropic Claude Partner Network. Ramba integrates the Wayl payment API with automated settlement via FIB / ZainCash. OoredooAI includes AI-driven lead scoring and CPA optimization. Also led the Ooredoo Algeria Mega Promo Service launch and the Khalaspay carrier billing integration. Taha builds with an AI-first workflow: Claude Code and Cursor for agentic development, and ships products on Anthropic Claude, Google Gemini, Groq, and DeepSeek models via the Vercel AI SDK with LiteLLM for multi-model routing. This portfolio itself — including its AI agent and admin CRM — was built with Claude Code.",
   crm: {
     autoReplyEnabled: true,
     autoReplySubject: "Thanks for reaching out — Taha Yasir",
