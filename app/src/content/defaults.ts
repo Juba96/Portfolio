@@ -83,7 +83,7 @@ export const DEFAULT_CONTENT: SiteContent = {
       desc: "Partner onboarding, technical integrations, and SLM frameworks with Tier-1 operators across Iraq, Saudi Arabia, UAE, and Algeria. Led the Ooredoo Algeria Mega Promo launch and the Khalaspay carrier-billing integration.",
     },
     {
-      period: "2022 — Present",
+      period: "2025 — Present",
       role: "Founder",
       org: "Qaysariya Studio",
       desc: "Independent product studio designing and shipping AI-directed, monetized digital products for MENA markets end-to-end — QuizQ, Ramba, OoredooAI, Voyalla.",
