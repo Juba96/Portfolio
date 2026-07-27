@@ -418,6 +418,7 @@ export function PortfolioApp({ content }: { content: SiteContent }) {
                 messages={messages}
                 isTyping={isTyping}
                 messagesEndRef={messagesEndRef}
+                contact={content.contact}
               />
             </motion.div>
           )}
@@ -1058,39 +1059,119 @@ function LeadForm() {
   );
 }
 
+// Matches URLs and email addresses inside assistant replies so they render
+// as tappable chips instead of raw text.
+const CHAT_LINK_RE = /(https?:\/\/[^\s)]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+
+function AssistantText({ text }: { text: string }) {
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  for (const match of text.matchAll(CHAT_LINK_RE)) {
+    const index = match.index ?? 0;
+    if (index > last) parts.push(text.slice(last, index));
+    // Trailing punctuation belongs to the sentence, not the link.
+    let token = match[0];
+    const trimmed = token.replace(/[.,;:!?)]+$/, "");
+    const trailing = token.slice(trimmed.length);
+    token = trimmed;
+    const isEmail = !token.startsWith("http");
+    const href = isEmail ? `mailto:${token}` : token;
+    const label = isEmail
+      ? token
+      : /linkedin\.com/i.test(token)
+        ? "LinkedIn"
+        : token.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
+    parts.push(
+      <a
+        key={key++}
+        href={href}
+        target={isEmail ? undefined : "_blank"}
+        rel="noreferrer"
+        onClick={() => track(isEmail ? "email_click" : /linkedin/i.test(token) ? "linkedin_click" : "chat_link_click")}
+        className="inline-flex items-center gap-1 px-2 py-[1px] mx-0.5 rounded-full bg-white border border-black/10 text-blue-600 font-medium text-[12px] align-middle hover:border-blue-300 hover:bg-blue-50 transition-colors break-all"
+      >
+        {label}
+      </a>,
+    );
+    if (trailing) parts.push(trailing);
+    last = index + match[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return <>{parts}</>;
+}
+
 function ChatView({
   messages,
   isTyping,
   messagesEndRef,
+  contact,
 }: {
   messages: Message[];
   isTyping: boolean;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  contact: SiteContent["contact"];
 }) {
   return (
     <div className="h-[55dvh] flex flex-col">
       <div className="flex-1 overflow-y-auto space-y-3 px-1">
         <AnimatePresence mode="popLayout">
-          {messages.map((msg) => (
-            <motion.div
-              key={msg.id}
-              initial={{ opacity: 0, y: 6, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[82%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-line ${
-                  msg.role === "user"
-                    ? "bg-blue-500 text-white rounded-br-md"
-                    : "bg-gray-100 text-gray-800 rounded-bl-md"
-                }`}
+          {messages.map((msg) => {
+            const isUser = msg.role === "user";
+            // When the assistant invites the visitor to connect, surface the
+            // contact channels as real buttons under the bubble.
+            const offersContact =
+              !isUser &&
+              (/linkedin\.com/i.test(msg.content) ||
+                msg.content.toLowerCase().includes(contact.email.toLowerCase()));
+            return (
+              <motion.div
+                key={msg.id}
+                initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
               >
-                {msg.content}
-              </div>
-            </motion.div>
-          ))}
+                <div
+                  className={`max-w-[82%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-line ${
+                    isUser
+                      ? "bg-blue-500 text-white rounded-br-md"
+                      : "bg-gray-100 text-gray-800 rounded-bl-md"
+                  }`}
+                >
+                  {isUser ? msg.content : <AssistantText text={msg.content} />}
+                </div>
+                {offersContact && (
+                  <div className="flex flex-wrap gap-2 mt-1.5 max-w-[82%]">
+                    <a
+                      href={contact.linkedin}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={() => track("linkedin_click")}
+                      className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-full bg-[#0a66c2] text-white text-[12px] font-semibold hover:bg-[#0a5cb0] transition-colors active:scale-[0.98]"
+                    >
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5" aria-hidden>
+                        <path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.34V9h3.42v1.56h.05a3.75 3.75 0 0 1 3.37-1.85c3.6 0 4.27 2.37 4.27 5.46v6.28zM5.32 7.43a2.07 2.07 0 1 1 0-4.13 2.07 2.07 0 0 1 0 4.13zm1.78 13.02H3.54V9h3.56v11.45z" />
+                      </svg>
+                      Connect on LinkedIn
+                    </a>
+                    <a
+                      href={`mailto:${contact.email}`}
+                      onClick={() => track("email_click")}
+                      className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-full bg-white border border-black/10 text-gray-800 text-[12px] font-semibold hover:border-black/30 transition-colors active:scale-[0.98]"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="w-3.5 h-3.5" aria-hidden>
+                        <rect x="3" y="5" width="18" height="14" rx="2" />
+                        <path d="m3 7 9 6 9-6" />
+                      </svg>
+                      Email Taha
+                    </a>
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
 
         {isTyping && (
