@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { db, schema } from "@/db";
 import { siteContentSchema } from "@/content/schema";
+import { TOPIC_RULES } from "@/lib/topics";
 import { requireAdmin } from "./admin-auth.functions";
 import { getSiteContent, invalidateContentCache } from "./content.server";
 import { r2Configured, uploadToR2 } from "./storage.server";
@@ -19,17 +20,7 @@ const leadDay = sql<string>`to_char(${schema.contactMessages.createdAt} at time 
 const dayKey = (date: Date) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: TZ, dateStyle: "short" }).format(date);
 
-// Rule-based topic buckets (EN + AR) for "what are visitors interested in" —
-// free and instant, no LLM cost. A question can count toward several topics.
-const TOPIC_RULES: { label: string; re: RegExp }[] = [
-  { label: "AI & chatbots", re: /\b(ai|chatbot|chat ?bot|llm|gpt|machine learning|agent)\b|ذكاء|روبوت/i },
-  { label: "Mobile apps", re: /\b(mobile|app|ios|android|flutter|react native)\b|تطبيق/i },
-  { label: "Web & websites", re: /\b(website|web ?app|frontend|landing page|portfolio)\b|موقع/i },
-  { label: "Telecom & VAS", re: /\b(telecom|vas|sms|operator|carrier|billing|dcb|zain|asiacell)\b|اتصالات/i },
-  { label: "Pricing & rates", re: /\b(price|pricing|rate|cost|budget|quote|charge)\b|سعر|تكلفة|ميزانية/i },
-  { label: "Hiring & collaboration", re: /\b(hire|hiring|job|freelance|collaborat|partner|work (with|together))\b|توظيف|تعاون|وظيف/i },
-  { label: "Background & skills", re: /\b(experience|skills?|cv|resume|education|stud(y|ied)|certification|stack|degree)\b|خبرة|مهارات|دراسة|شهادة/i },
-];
+// Topic buckets live in src/lib/topics.ts — shared with the Chats inbox UI.
 
 export const adminStats = createServerFn({ method: "GET" }).handler(async () => {
   await requireAdmin();
@@ -326,11 +317,11 @@ export const adminListConversations = createServerFn({ method: "GET" })
         with conv as (${conv})
         select c.key, c.latest, c.exchange_count, c.has_lead, c.has_hiring, c.has_unanswered,
           (p.key is not null) as pinned,
-          cm.email as lead_email, cm.id as lead_id
+          cm.email as lead_email, cm.id as lead_id, cm.name as lead_name
         from conv c
         left join pinned_conversations p on p.key = c.key
         left join lateral (
-          select email, id from contact_messages
+          select email, id, name from contact_messages
           where session_id = c.key
           order by created_at desc limit 1
         ) cm on true
@@ -358,6 +349,7 @@ export const adminListConversations = createServerFn({ method: "GET" })
       pinned: boolean;
       lead_email: string | null;
       lead_id: number | null;
+      lead_name: string | null;
     }[];
     const counts = (countsRes.rows[0] ?? { important: 0, starred: 0, unanswered: 0, total: 0 }) as {
       important: number;
