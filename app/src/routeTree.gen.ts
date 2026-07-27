@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
+import { Route as ResumeDotpdfRouteImport } from './routes/resume[.]pdf'
 import { Route as OverviewRouteImport } from './routes/overview'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
@@ -24,6 +25,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
   id: '/robots.txt',
   path: '/robots.txt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResumeDotpdfRoute = ResumeDotpdfRouteImport.update({
+  id: '/resume.pdf',
+  path: '/resume.pdf',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OverviewRoute = OverviewRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/overview': typeof OverviewRoute
+  '/resume.pdf': typeof ResumeDotpdfRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/chat': typeof ApiChatRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/overview': typeof OverviewRoute
+  '/resume.pdf': typeof ResumeDotpdfRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/chat': typeof ApiChatRoute
@@ -68,6 +76,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/overview': typeof OverviewRoute
+  '/resume.pdf': typeof ResumeDotpdfRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/chat': typeof ApiChatRoute
@@ -75,15 +84,28 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/admin' | '/overview' | '/robots.txt' | '/sitemap.xml' | '/api/chat'
+    | '/'
+    | '/admin'
+    | '/overview'
+    | '/resume.pdf'
+    | '/robots.txt'
+    | '/sitemap.xml'
+    | '/api/chat'
   fileRoutesByTo: FileRoutesByTo
   to:
-    '/' | '/admin' | '/overview' | '/robots.txt' | '/sitemap.xml' | '/api/chat'
+    | '/'
+    | '/admin'
+    | '/overview'
+    | '/resume.pdf'
+    | '/robots.txt'
+    | '/sitemap.xml'
+    | '/api/chat'
   id:
     | '__root__'
     | '/'
     | '/admin'
     | '/overview'
+    | '/resume.pdf'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/api/chat'
@@ -93,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   OverviewRoute: typeof OverviewRoute
+  ResumeDotpdfRoute: typeof ResumeDotpdfRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ApiChatRoute: typeof ApiChatRoute
@@ -112,6 +135,13 @@ declare module '@tanstack/react-router' {
       path: '/robots.txt'
       fullPath: '/robots.txt'
       preLoaderRoute: typeof RobotsDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/resume.pdf': {
+      id: '/resume.pdf'
+      path: '/resume.pdf'
+      fullPath: '/resume.pdf'
+      preLoaderRoute: typeof ResumeDotpdfRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/overview': {
@@ -149,6 +179,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   OverviewRoute: OverviewRoute,
+  ResumeDotpdfRoute: ResumeDotpdfRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   ApiChatRoute: ApiChatRoute,

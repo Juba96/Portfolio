@@ -202,7 +202,7 @@ const PERSON_JSON_LD = JSON.stringify({
   name: "Taha Yasir",
   url: "https://taha.qaysariya.com",
   jobTitle: "AI Product Builder & Senior VAS Product Development Manager",
-  worksFor: { "@type": "Organization", name: "Al-Bawaba Telecom" },
+  worksFor: { "@type": "Organization", name: "Trendy Technologies" },
   address: { "@type": "PostalAddress", addressLocality: "Baghdad", addressCountry: "IQ" },
   email: "mailto:Taha@qaysariya.com",
   sameAs: ["https://www.linkedin.com/in/taha-algburi/"],

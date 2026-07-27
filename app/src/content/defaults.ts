@@ -79,7 +79,7 @@ export const DEFAULT_CONTENT: SiteContent = {
     {
       period: "2022 — Present",
       role: "Senior VAS & Product Development Manager",
-      org: "Al-Bawaba Telecom",
+      org: "Trendy Technologies",
       desc: "Partner onboarding, technical integrations, and SLM frameworks with Tier-1 operators across Iraq, Saudi Arabia, UAE, and Algeria. Led the Ooredoo Algeria Mega Promo launch and the Khalaspay carrier-billing integration.",
     },
     {
