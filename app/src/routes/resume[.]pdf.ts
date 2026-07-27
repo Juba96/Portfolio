@@ -195,8 +195,11 @@ export const Route = createFileRoute("/resume.pdf")({
             headers: {
               "content-type": "application/pdf",
               "content-disposition": 'inline; filename="Taha-Yasir-Resume.pdf"',
-              // Always fresh so dashboard edits show up immediately.
-              "cache-control": "no-cache",
+              // no-store: neither browsers nor Cloudflare's edge may cache
+              // this — dashboard edits must show in the very next download.
+              // (The old static resume.pdf got stuck in Cloudflare's cache
+              // for a day because it was served with public, max-age=86400.)
+              "cache-control": "no-store",
             },
           });
         } catch (error) {
