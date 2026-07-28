@@ -15,6 +15,7 @@ import {
   adminTotpDisable,
   adminTotpEnable,
 } from "@/lib/api/admin-auth.functions";
+import ParticlesBackground from "@/components/lightswind/particles-background";
 import { BorderBeam } from "@/components/lightswind/border-beam";
 import { CountUp } from "@/components/lightswind/count-up";
 import { ExpandableSearchBar } from "@/components/lightswind/expandable-search-bar";
@@ -153,7 +154,17 @@ function AdminPage() {
   }, []);
 
   return (
-    <div className="h-dvh w-full overflow-y-auto bg-white text-black">
+    <div className="relative h-dvh w-full overflow-y-auto bg-white text-black">
+      {/* Lightswind ambient particle field, behind everything. */}
+      <ParticlesBackground
+        colors={["#c4b5fd", "#fcd34d", "#99f6e4", "#fbcfe8"]}
+        size={3}
+        countDesktop={45}
+        countTablet={35}
+        countMobile={22}
+        zIndex={-1}
+        height="100vh"
+      />
       <div className="mx-auto max-w-4xl px-4 md:px-6 py-6 md:py-10 pb-24">
         {phase === "loading" && <PageSkeleton />}
         {phase === "login" && <LoginCard onSuccess={() => setPhase("app")} />}
@@ -303,7 +314,7 @@ function LoginCard({ onSuccess }: { onSuccess: () => void }) {
         )}
         <ShineButton
           disabled={state === "checking" || (step === "password" ? !password : code.length !== 6)}
-          className="mt-4 w-full"
+          className="mt-4 w-full !rounded-full"
         >
           {state === "checking" ? "Checking…" : step === "password" ? "Continue" : "Enter dashboard"}
         </ShineButton>
@@ -2270,7 +2281,7 @@ function SecurityTab() {
               <span className="block font-mono font-semibold mt-1 select-all">{next}</span>
             </p>
           )}
-          <ShineButton disabled={state === "saving" || !current || !next || !confirm} size="sm">
+          <ShineButton disabled={state === "saving" || !current || !next || !confirm} size="sm" className="!rounded-full">
             {state === "saving" ? "Changing…" : "Change password"}
           </ShineButton>
           {state === "saved" && (
@@ -2391,7 +2402,7 @@ function TotpCard({ enabled, onChanged }: { enabled: boolean; onChanged: () => v
               </button>
             </>
           ) : (
-            <ShineButton onClick={begin} disabled={busy} size="sm">
+            <ShineButton onClick={begin} disabled={busy} size="sm" className="!rounded-full">
               {busy ? "Preparing…" : "Enable 2FA"}
             </ShineButton>
           )}
@@ -2442,7 +2453,7 @@ function TotpCard({ enabled, onChanged }: { enabled: boolean; onChanged: () => v
                 />
               </div>
               <div className="flex items-center gap-2">
-                <ShineButton disabled={busy || code.length !== 6} size="sm">
+                <ShineButton disabled={busy || code.length !== 6} size="sm" className="!rounded-full">
                   {busy ? "Verifying…" : "Verify & enable"}
                 </ShineButton>
                 <button
@@ -3157,6 +3168,7 @@ function ContentTab({
             onClick={save}
             disabled={state === "saving" || (!dirty && state !== "error")}
             size="sm"
+            className="!rounded-full"
           >
             {state === "saving" ? "Saving…" : "Save changes"}
           </ShineButton>
