@@ -1165,11 +1165,7 @@ function LeadsTab({
     <div className="space-y-3">
       {/* Toolbar: search + status + source filters */}
       <div className={`${glassCard} p-3 flex flex-wrap items-center gap-2`}>
-        <ExpandableSearchBar
-          onChange={setQuery}
-          placeholder="Search name, email, or message…"
-          expandedWidth="17rem"
-        />
+        <ExpandableSearchBar onChange={setQuery} placeholder="Search leads…" expandedWidth="18rem" />
         {view === "list" && (
           <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Filter by status">
             {(["all", ...Object.keys(STATUS_META)] as ("all" | keyof typeof STATUS_META)[]).map((s) => (
@@ -1681,11 +1677,7 @@ function ChatsTab({
     <div>
       {/* Toolbar: search (collapsed to an icon), triage chips, time scope */}
       <div className={`${glassCard} p-3 flex flex-wrap items-center gap-2 mb-4`}>
-        <ExpandableSearchBar
-          onChange={setQuery}
-          placeholder="Search questions and answers…"
-          expandedWidth="16rem"
-        />
+        <ExpandableSearchBar onChange={setQuery} placeholder="Search chats…" expandedWidth="18rem" />
 
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Conversation filters">
           {FILTERS.map((f) => (
