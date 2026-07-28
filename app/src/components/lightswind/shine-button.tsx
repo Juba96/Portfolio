@@ -1,55 +1,79 @@
-import { cn } from "@/lib/utils";
+import React from "react";
 
-// Lightswind UI "Shine Button" (lightswind.com/components/shine-button),
-// vendored per their copy-paste model and adapted: pill shape, dark brand
-// gradient by default, native button props pass through, and the shine
-// sweep runs as a slow continuous loop (keyframes in styles.css).
+interface ShineButtonProps {
+  label?: string;
+  onClick?: () => void;
+  className?: string;
+  size?: "sm" | "md" | "lg";
+  bgColor?: string; // Can be hex or gradient
+  disabled?: boolean;
+  children?: React.ReactNode;
+}
 
-type ShineButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  /** CSS background-image; defaults to the dashboard's dark gradient. */
-  gradient?: string;
+const sizeStyles: Record<
+  NonNullable<ShineButtonProps["size"]>,
+  { padding: string; fontSize: string }
+> = {
+  sm: { padding: "0.5rem 1rem", fontSize: "0.875rem" },
+  md: { padding: "0.6rem 1.4rem", fontSize: "1rem" },
+  lg: { padding: "0.8rem 1.8rem", fontSize: "1.125rem" },
 };
 
-export function ShineButton({
-  className,
+export const ShineButton: React.FC<ShineButtonProps> = ({
+  label = "Shine now",
+  onClick,
+  className = "",
+  size = "md",
+  bgColor = "linear-gradient(325deg, hsl(217 100% 56%) 0%, hsl(194 100% 69%) 55%, hsl(217 100% 56%) 90%)",
+  disabled = false,
   children,
-  gradient,
-  disabled,
-  style,
-  ...props
-}: ShineButtonProps) {
+}) => {
+  const { padding, fontSize } = sizeStyles[size];
+
+  // Determine whether to use solid color or gradient
+  const backgroundImage = bgColor.startsWith("linear-gradient")
+    ? bgColor
+    : `linear-gradient(to right, ${bgColor}, ${bgColor})`;
+
   return (
     <button
+      onClick={onClick}
       disabled={disabled}
-      className={cn(
-        "relative overflow-hidden rounded-full font-semibold text-white",
-        "active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-black/30",
-        className,
-      )}
+      className={`relative text-white font-medium rounded-md min-w-[120px] min-h-[44px] transition-all duration-700 ease-in-out
+        border-none cursor-pointer shadow-[0px_0px_20px_rgba(71,184,255,0.5),0px_5px_5px_-1px_rgba(58,125,233,0.25),inset_4px_4px_8px_rgba(175,230,255,0.5),inset_-4px_-4px_8px_rgba(19,95,216,0.35)]
+        focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-blue-500
+        hover:bg-[length:280%_auto] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none ${className}`}
       style={{
-        backgroundImage: gradient ?? "linear-gradient(325deg, #0b0b0c 0%, #3d3d42 55%, #0b0b0c 90%)",
+        backgroundImage: disabled ? "none" : backgroundImage,
+        backgroundColor: disabled ? "hsl(var(--muted))" : undefined,
         backgroundSize: "280% auto",
-        transition: "background-position 0.8s ease, transform 0.15s ease, opacity 0.2s ease",
-        ...style,
+        backgroundPosition: "initial",
+        color: disabled ? "hsl(var(--muted-foreground))" : "hsl(0 0% 100%)",
+        fontSize,
+        padding,
+        transition: "0.8s",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.backgroundPosition = "right top";
+        if (!disabled) {
+          (e.target as HTMLButtonElement).style.backgroundPosition = "right top";
+        }
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundPosition = "initial";
+        if (!disabled) {
+          (e.target as HTMLButtonElement).style.backgroundPosition = "initial";
+        }
       }}
-      {...props}
     >
-      <span className="relative z-10 inline-flex w-full items-center justify-center gap-1.5">
-        {children}
-      </span>
+      {children || label}
+
+      {/* Shine effect */}
       {!disabled && (
-        <span
-          aria-hidden
-          className="ls-shine pointer-events-none absolute top-0 h-full w-1/3 skew-x-[-20deg] bg-white/25"
+        <div
+          className="absolute top-0 left-[-75%] w-[200%] 
+        h-full bg-white/40 skew-x-[-20deg] opacity-0 
+        group-hover:opacity-100 animate-shine pointer-events-none z-20"
         />
       )}
     </button>
   );
-}
+};

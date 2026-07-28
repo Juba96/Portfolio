@@ -1,56 +1,143 @@
-import { motion } from "motion/react";
 
-import { cn } from "@/lib/utils";
+"use client";
 
-// Lightswind UI "Border Beam" (lightswind.com/components/border-beam),
-// vendored per their copy-paste model and adapted to this codebase:
-// motion/react instead of framer-motion, local cn, trimmed props.
-// A luminous beam that travels around the parent's border — the parent
-// needs `relative` and a border radius (the beam inherits it).
+import React from "react";
+import { cn } from "@/components/lib/utils";
+import { motion } from "framer-motion";
 
-export function BorderBeam({
-  size = 56,
-  duration = 6,
-  delay = 0,
-  colorFrom = "#f59e0b",
-  colorTo = "#ef4444",
-  thickness = 1.5,
-  opacity = 0.9,
-  className,
-}: {
+interface BorderBeamProps {
+  /**
+   * The size of the border beam.
+   */
   size?: number;
+  /**
+   * The duration of the border beam.
+   */
   duration?: number;
+  /**
+   * The delay of the border beam.
+   */
   delay?: number;
+  /**
+   * The color of the border beam from.
+   */
   colorFrom?: string;
+  /**
+   * The color of the border beam to.
+   */
   colorTo?: string;
-  thickness?: number;
-  opacity?: number;
+  /**
+   * The motion transition of the border beam.
+   */
+  transition?: any;
+  /**
+   * The class name of the border beam.
+   */
   className?: string;
-}) {
+  /**
+   * The style of the border beam.
+   */
+  style?: React.CSSProperties;
+  /**
+   * Whether to reverse the animation direction.
+   */
+  reverse?: boolean;
+  /**
+   * The initial offset position (0-100).
+   */
+  initialOffset?: number;
+  /**
+   * The thickness of the border.
+   */
+  borderThickness?: number;
+  /**
+   * The opacity of the beam.
+   */
+  opacity?: number;
+  /**
+   * The intensity of the glow effect.
+   */
+  glowIntensity?: number;
+  /**
+   * Border radius of the beam in pixels.
+   */
+  beamBorderRadius?: number;
+  /**
+   * Whether to pause animation on hover.
+   */
+  pauseOnHover?: boolean;
+  /**
+   * Animation speed multiplier (higher is faster).
+   */
+  speedMultiplier?: number;
+}
+
+export const BorderBeam = ({
+  className,
+  size = 50,
+  delay = 0,
+  duration = 6,
+  colorFrom = "#7400ff",
+  colorTo = "#9b41ff",
+  transition,
+  style,
+  reverse = false,
+  initialOffset = 0,
+  borderThickness = 1,
+  opacity = 1,
+  glowIntensity = 0,
+  beamBorderRadius,
+  pauseOnHover = false,
+  speedMultiplier = 1,
+}: BorderBeamProps) => {
+  // Calculate actual duration based on speed multiplier
+  const actualDuration = speedMultiplier ? duration / speedMultiplier : duration;
+  
+  // Generate box shadow for glow effect
+  const glowEffect = glowIntensity > 0 
+    ? `0 0 ${glowIntensity * 5}px ${glowIntensity * 2}px var(--color-from)` 
+    : undefined;
+
   return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute inset-0 rounded-[inherit] border border-transparent [mask-clip:padding-box,border-box] [mask-composite:intersect] [mask-image:linear-gradient(transparent,transparent),linear-gradient(#000,#000)]"
-      style={{ borderWidth: thickness }}
+ <div className="pointer-events-none absolute inset-0 rounded-[inherit] 
+    border border-transparent [mask-clip:padding-box,border-box] 
+    [mask-composite:intersect] [mask-image:linear-gradient(transparent,transparent),linear-gradient(#000,#000)]"
+ 
+      // style={{ 
+      //   borderWidth: `${borderThickness}px`,
+      // }}
     >
       <motion.div
         className={cn(
-          "absolute aspect-square bg-gradient-to-l from-[var(--beam-from)] via-[var(--beam-to)] to-transparent",
+          "absolute aspect-square",
+          "bg-gradient-to-l from-[var(--color-from)] via-[var(--color-to)] to-transparent",
+          pauseOnHover && "group-hover:animation-play-state-paused",
           className,
         )}
-        style={
-          {
-            width: size,
-            offsetPath: `rect(0 auto auto 0 round ${size}px)`,
-            "--beam-from": colorFrom,
-            "--beam-to": colorTo,
-            opacity,
-          } as React.CSSProperties
-        }
-        initial={{ offsetDistance: "0%" }}
-        animate={{ offsetDistance: ["0%", "100%"] }}
-        transition={{ repeat: Infinity, ease: "linear", duration, delay: -delay }}
+        style={{
+          width: size,
+          offsetPath: `rect(0 auto auto 0 round ${beamBorderRadius ?? size}px)`,
+          "--color-from": colorFrom,
+          "--color-to": colorTo,
+          opacity: opacity,
+          boxShadow: glowEffect,
+          borderRadius: beamBorderRadius ? `${beamBorderRadius}px` : undefined,
+          ...style,
+        } as any}
+        initial={{ offsetDistance: `${initialOffset}%` }}
+        animate={{
+          offsetDistance: reverse
+            ? [`${100 - initialOffset}%`, `${-initialOffset}%`]
+            : [`${initialOffset}%`, `${100 + initialOffset}%`],
+        }}
+        transition={{
+          repeat: Infinity,
+          ease: "linear",
+          duration: actualDuration,
+          delay: -delay,
+          ...transition,
+        }}
       />
     </div>
   );
-}
+};

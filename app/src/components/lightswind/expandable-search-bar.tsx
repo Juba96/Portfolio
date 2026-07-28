@@ -1,116 +1,159 @@
-import { useEffect, useRef, useState } from "react";
-import { motion } from "motion/react";
+"use client";
 
-import { cn } from "@/lib/utils";
+import React, { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Search, X, Command } from "lucide-react";
+import { cn } from "@/components/lib/utils";
 
-// Lightswind UI "Expandable Search Bar"
-// (lightswind.com — registry/expandable-search-bar), vendored per their
-// copy-paste model and adapted: motion/react, controlled value, inline
-// SVG icons, palette matched to the dashboard (gray pill → white field),
-// Escape clears + collapses, no ⌘K hint (no global shortcut wired).
+interface ExpandableSearchBarProps {
+  /** Optional placeholder text */
+  placeholder?: string;
+  /** Optional onChange handler */
+  onChange?: (value: string) => void;
+  /** Optional onSubmit handler */
+  onSubmit?: (value: string) => void;
+  /** Additional CSS classes */
+  className?: string;
+  /** The maximum expanded width (Tailwind class or absolute value like "300px") */
+  expandedWidth?: string | number;
+}
 
 export function ExpandableSearchBar({
-  value,
+  placeholder = "Search...",
   onChange,
-  placeholder = "Search…",
-  expandedWidth = "18rem",
+  onSubmit,
   className,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  expandedWidth?: string | number;
-  className?: string;
-}) {
-  const [isExpanded, setIsExpanded] = useState(Boolean(value));
+  expandedWidth = "18rem", // 288px (w-72)
+}: ExpandableSearchBarProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [value, setValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Focus input when expanded
   useEffect(() => {
-    if (isExpanded) inputRef.current?.focus();
+    if (isExpanded && inputRef.current) {
+      inputRef.current.focus();
+    }
   }, [isExpanded]);
 
-  // Collapse on outside click when empty.
+  // Handle outside click to collapse if empty
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node) && value === "") {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node) &&
+        value === ""
+      ) {
         setIsExpanded(false);
       }
     };
+
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [value]);
 
-  const clear = () => {
-    onChange("");
-    setIsExpanded(false);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (onSubmit) onSubmit(value);
+  };
+
+  const handleClear = () => {
+    setValue("");
+    if (onChange) onChange("");
+    inputRef.current?.focus();
   };
 
   return (
     <div
       ref={containerRef}
-      className={cn("relative flex items-center", className)}
-      style={{ width: isExpanded ? expandedWidth : "2.25rem" }}
+      className={cn("relative flex items-center justify-end", className)}
+      // Ensures the container takes up the max space when expanded to prevent layout shifts if needed
+      style={{ width: isExpanded ? expandedWidth : "2.5rem" }}
     >
       <motion.form
         initial={false}
-        animate={{ width: isExpanded ? expandedWidth : "2.25rem" }}
-        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-        onSubmit={(e) => e.preventDefault()}
-        onClick={() => !isExpanded && setIsExpanded(true)}
+        animate={{
+          width: isExpanded ? expandedWidth : "2.5rem",
+          backgroundColor: isExpanded ? "var(--background)" : "var(--muted)",
+        }}
+        transition={{
+          type: "spring",
+          stiffness: 400,
+          damping: 30,
+        }}
+        onSubmit={handleSubmit}
         className={cn(
-          "relative flex h-9 items-center overflow-hidden rounded-full transition-colors",
-          isExpanded
-            ? "border border-black/10 bg-white shadow-sm"
-            : "border border-transparent bg-gray-100 hover:bg-gray-200/70 cursor-pointer",
+          "relative flex h-10 items-center overflow-hidden rounded-full border shadow-sm transition-colors focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0",
+          isExpanded ? "border-border/50 bg-background" : "border-transparent bg-muted hover:bg-muted/80 cursor-pointer"
         )}
+        onClick={() => !isExpanded && setIsExpanded(true)}
       >
         <button
           type="button"
+          className="absolute left-0 flex h-full w-10 items-center justify-center text-muted-foreground transition-colors hover:text-foreground z-10 focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0"
+          onClick={() => {
+            if (isExpanded && value === "") {
+              setIsExpanded(false);
+            } else if (!isExpanded) {
+              setIsExpanded(true);
+            }
+          }}
           aria-label="Search"
           disabled={isExpanded && value !== ""}
-          onClick={() => {
-            if (isExpanded && value === "") setIsExpanded(false);
-            else if (!isExpanded) setIsExpanded(true);
-          }}
-          className="absolute left-0 z-10 flex h-full w-9 items-center justify-center text-gray-500 transition-colors hover:text-black focus:outline-none cursor-pointer"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="h-4 w-4" aria-hidden>
-            <circle cx="11" cy="11" r="7" />
-            <path d="m20 20-3.5-3.5" />
-          </svg>
+          <Search className="h-4 w-4" />
         </button>
 
         <input
           ref={inputRef}
-          type="search"
+          type="text"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") clear();
+          onChange={(e) => {
+            setValue(e.target.value);
+            if (onChange) onChange(e.target.value);
           }}
           placeholder={placeholder}
-          aria-label={placeholder}
+          className="h-full w-full border-none bg-transparent pl-10 pr-10 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-transparent focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:outline-none focus:ring-offset-0 focus-visible:ring-offset-0"
+          style={{
+            pointerEvents: isExpanded ? "auto" : "none",
+            opacity: isExpanded ? 1 : 0,
+            boxShadow: "none",
+          }}
           tabIndex={isExpanded ? 0 : -1}
-          className="h-full w-full border-none bg-transparent pl-9 pr-9 text-[13px] outline-none placeholder:text-gray-400 focus:ring-0"
-          style={{ pointerEvents: isExpanded ? "auto" : "none", opacity: isExpanded ? 1 : 0 }}
         />
 
-        {isExpanded && value !== "" && (
-          <motion.button
-            type="button"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.15 }}
-            onClick={clear}
-            aria-label="Clear search"
-            className="absolute right-0 flex h-full w-9 items-center justify-center text-gray-400 hover:text-black focus:outline-none cursor-pointer"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="h-3.5 w-3.5" aria-hidden>
-              <path d="M6 6l12 12M18 6 6 18" />
-            </svg>
-          </motion.button>
-        )}
+        <AnimatePresence>
+          {isExpanded && value === "" && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.15 }}
+              className="absolute right-3 flex items-center justify-center pointer-events-none"
+            >
+              <div className="flex h-5 items-center gap-1 rounded bg-muted px-1.5  text-[10px] font-medium text-muted-foreground">
+                <Command className="h-3 w-3" />
+                <span>K</span>
+              </div>
+            </motion.div>
+          )}
+
+          {isExpanded && value !== "" && (
+            <motion.button
+              type="button"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.15 }}
+              onClick={handleClear}
+              className="absolute right-0 flex h-full w-10 items-center justify-center text-muted-foreground hover:text-foreground focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </motion.button>
+          )}
+        </AnimatePresence>
       </motion.form>
     </div>
   );

@@ -1,4 +1,7 @@
 @import "tailwindcss";
+/* Official Lightswind Tailwind plugin: theme tokens (background/muted/border…),
+   keyframes (shine, …) and utilities their registry components rely on. */
+@plugin "lightswind/plugin";
 
 /* Class-based dark mode (Tailwind v4 defaults to prefers-color-scheme).
    The FluidActionPanel theme toggle flips .dark on <html>. */
@@ -316,16 +319,6 @@ body {
 .avatar-float {
   animation: float 5s ease-in-out infinite;
   filter: drop-shadow(0 20px 30px rgba(0,0,0,0.15));
-}
-
-/* Lightswind ShineButton sweep (components/lightswind/shine-button.tsx). */
-@keyframes ls-shine {
-  0% { left: -45%; }
-  60%, 100% { left: 125%; }
-}
-.ls-shine {
-  left: -45%;
-  animation: ls-shine 3.2s ease-in-out infinite;
 }
 
 /* Respect OS-level reduced-motion: stop the ambient float and minimize all

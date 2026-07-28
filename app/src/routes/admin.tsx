@@ -301,9 +301,8 @@ function LoginCard({ onSuccess }: { onSuccess: () => void }) {
           </>
         )}
         <ShineButton
-          type="submit"
           disabled={state === "checking" || (step === "password" ? !password : code.length !== 6)}
-          className="mt-4 w-full h-11 text-sm"
+          className="mt-4 w-full"
         >
           {state === "checking" ? "Checking…" : step === "password" ? "Continue" : "Enter dashboard"}
         </ShineButton>
@@ -351,6 +350,22 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [leadsPreset, setLeadsPreset] = useState<string | null>(null);
   // Set when Chats sends an unanswered question to Content → AI knowledge.
   const [teachQuestion, setTeachQuestion] = useState<string | null>(null);
+
+  // ⌘K / Ctrl+K expands and focuses the Lightswind search bar on the
+  // current tab (the component shows the hint; the shortcut lives here).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
+      const searchButton = document.querySelector<HTMLButtonElement>('button[aria-label="Search"]');
+      if (!searchButton) return;
+      event.preventDefault();
+      const input = searchButton.closest("form")?.querySelector("input");
+      if (input && input.style.opacity === "1") input.focus();
+      else searchButton.click();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     adminStats().then(setStats).catch(console.error);
@@ -1151,7 +1166,6 @@ function LeadsTab({
       {/* Toolbar: search + status + source filters */}
       <div className={`${glassCard} p-3 flex flex-wrap items-center gap-2`}>
         <ExpandableSearchBar
-          value={query}
           onChange={setQuery}
           placeholder="Search name, email, or message…"
           expandedWidth="17rem"
@@ -1668,7 +1682,6 @@ function ChatsTab({
       {/* Toolbar: search (collapsed to an icon), triage chips, time scope */}
       <div className={`${glassCard} p-3 flex flex-wrap items-center gap-2 mb-4`}>
         <ExpandableSearchBar
-          value={query}
           onChange={setQuery}
           placeholder="Search questions and answers…"
           expandedWidth="16rem"
@@ -2259,11 +2272,7 @@ function SecurityTab() {
               <span className="block font-mono font-semibold mt-1 select-all">{next}</span>
             </p>
           )}
-          <ShineButton
-            type="submit"
-            disabled={state === "saving" || !current || !next || !confirm}
-            className="h-11 px-6 text-sm"
-          >
+          <ShineButton disabled={state === "saving" || !current || !next || !confirm} size="sm">
             {state === "saving" ? "Changing…" : "Change password"}
           </ShineButton>
           {state === "saved" && (
@@ -2384,7 +2393,7 @@ function TotpCard({ enabled, onChanged }: { enabled: boolean; onChanged: () => v
               </button>
             </>
           ) : (
-            <ShineButton onClick={begin} disabled={busy} className="h-10 px-5 text-[13px]">
+            <ShineButton onClick={begin} disabled={busy} size="sm">
               {busy ? "Preparing…" : "Enable 2FA"}
             </ShineButton>
           )}
@@ -2435,7 +2444,7 @@ function TotpCard({ enabled, onChanged }: { enabled: boolean; onChanged: () => v
                 />
               </div>
               <div className="flex items-center gap-2">
-                <ShineButton type="submit" disabled={busy || code.length !== 6} className="h-10 px-5 text-[13px]">
+                <ShineButton disabled={busy || code.length !== 6} size="sm">
                   {busy ? "Verifying…" : "Verify & enable"}
                 </ShineButton>
                 <button
@@ -3149,7 +3158,7 @@ function ContentTab({
           <ShineButton
             onClick={save}
             disabled={state === "saving" || (!dirty && state !== "error")}
-            className="h-11 px-6 text-sm"
+            size="sm"
           >
             {state === "saving" ? "Saving…" : "Save changes"}
           </ShineButton>
