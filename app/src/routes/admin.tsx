@@ -1464,7 +1464,9 @@ function ChatsTab({
   const [meta, setMeta] = useState<ConvMeta[] | null>(null);
   const [exchangesByKey, setExchangesByKey] = useState<Map<string, ChatLog[]>>(new Map());
   const [counts, setCounts] = useState({ important: 0, starred: 0, unanswered: 0, total: 0 });
-  const [filter, setFilter] = useState<ChatFilter>("important");
+  const [filter, setFilter] = useState<ChatFilter>("all");
+  // Land on today's conversations; older ones are one click away.
+  const [scope, setScope] = useState<"today" | "older" | "all">("today");
   const [query, setQuery] = useState("");
   const [q, setQ] = useState(""); // debounced
   const [sort, setSort] = useState<"priority" | "newest">("priority");
@@ -1476,7 +1478,7 @@ function ChatsTab({
 
   useEffect(() => {
     setSelectedKey(null);
-  }, [q, filter, sort]);
+  }, [q, filter, scope, sort]);
 
   useEffect(() => {
     const t = setTimeout(() => setQ(query.trim()), 300);
@@ -1494,28 +1496,49 @@ function ChatsTab({
     return next;
   };
 
+  const [refreshing, setRefreshing] = useState(false);
+  // Mirrors how many conversations are loaded, for the auto-refresh guard.
+  const loadedCountRef = useRef(0);
   useEffect(() => {
-    let alive = true;
-    adminListConversations({
-      data: { q: q || undefined, filter, sort, limit: CHAT_PAGE, offset: 0 },
+    loadedCountRef.current = meta?.length ?? 0;
+  }, [meta]);
+
+  const fetchFirstPage = (silent = false) => {
+    if (!silent) setRefreshing(true);
+    return adminListConversations({
+      data: { q: q || undefined, filter, scope, sort, limit: CHAT_PAGE, offset: 0 },
     })
       .then((r) => {
-        if (!alive) return;
         setMeta(r.page);
         setCounts(r.counts);
         setExchangesByKey((prev) => mergeExchanges(prev, r.exchanges, true));
-        // Don't land the user on an empty "Important" view (first load only).
+        // Nothing today yet? Land on the full history instead (first load only).
         if (!landed) {
           setLanded(true);
-          if (r.counts.important === 0 && filter === "important") setFilter("all");
+          if (r.counts.total === 0 && scope === "today" && !q) setScope("all");
         }
       })
-      .catch(console.error);
-    return () => {
-      alive = false;
-    };
+      .catch(console.error)
+      .finally(() => setRefreshing(false));
+  };
+
+  useEffect(() => {
+    fetchFirstPage(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, filter, sort]);
+  }, [q, filter, scope, sort]);
+
+  // Live-ish inbox: re-fetch the first page every 30s while the tab is
+  // visible, so new visitor conversations appear without a manual reload.
+  // Skipped when the owner has paged deeper (a reset would collapse that).
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      if (loadedCountRef.current > CHAT_PAGE) return;
+      fetchFirstPage(true);
+    }, 30_000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, filter, scope, sort]);
 
   const togglePin = (key: string) => {
     const wasPinned = meta?.find((c) => c.key === key)?.pinned ?? false;
@@ -1557,7 +1580,7 @@ function ChatsTab({
     setBusyMore(true);
     try {
       const r = await adminListConversations({
-        data: { q: q || undefined, filter, sort, limit: CHAT_PAGE, offset: meta.length },
+        data: { q: q || undefined, filter, scope, sort, limit: CHAT_PAGE, offset: meta.length },
       });
       setMeta((prev) => [...(prev ?? []), ...r.page]);
       setCounts(r.counts);
@@ -1649,6 +1672,26 @@ function ChatsTab({
             className="w-full h-9 rounded-full border border-black/10 bg-white pl-9 pr-3.5 text-[13px] placeholder:text-gray-400 focus:outline-none focus:border-black/30 focus:ring-2 focus:ring-black/5 transition-all"
           />
         </div>
+        <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Time scope">
+          {(
+            [
+              ["today", "Today"],
+              ["older", "Older"],
+              ["all", "All time"],
+            ] as const
+          ).map(([s, label]) => (
+            <button
+              key={s}
+              onClick={() => setScope(s)}
+              aria-pressed={scope === s}
+              className={`h-8 px-3 rounded-full text-[11px] font-semibold transition-all active:scale-[0.97] cursor-pointer ${
+                scope === s ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Conversation filters">
           {FILTERS.map((f) => (
             <button
@@ -1689,6 +1732,26 @@ function ChatsTab({
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          onClick={() => fetchFirstPage()}
+          disabled={refreshing}
+          aria-label="Refresh conversations"
+          title="Refresh — new conversations also appear automatically every 30s"
+          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:text-black transition-colors cursor-pointer disabled:opacity-50"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`}
+            aria-hidden
+          >
+            <path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />
+          </svg>
+        </button>
       </div>
 
       {sorted.length === 0 && (
@@ -1697,7 +1760,9 @@ function ChatsTab({
           <p className="text-[12px] text-gray-500 mt-1">
             {q
               ? "No conversations match your search."
-              : 'No conversations match this filter yet — that\'s a good thing for "Couldn\'t answer".'}
+              : scope === "today"
+                ? "No conversations today yet — switch to Older or All time for history."
+                : 'No conversations match this filter yet — that\'s a good thing for "Couldn\'t answer".'}
           </p>
         </div>
       )}

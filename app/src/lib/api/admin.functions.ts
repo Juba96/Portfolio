@@ -274,6 +274,8 @@ export const adminListConversations = createServerFn({ method: "GET" })
     z.object({
       q: z.string().max(200).optional(),
       filter: z.enum(["important", "starred", "unanswered", "all"]).default("all"),
+      // Time scope: today's conversations, older-than-today, or everything.
+      scope: z.enum(["today", "older", "all"]).default("all"),
       sort: z.enum(["priority", "newest"]).default("priority"),
       limit: z.number().int().min(1).max(50).default(15),
       offset: z.number().int().min(0).max(100000).default(0),
@@ -283,6 +285,16 @@ export const adminListConversations = createServerFn({ method: "GET" })
     await requireAdmin();
     const d = db();
     const pat = data.q ? `%${data.q}%` : null;
+    // Midnight in Baghdad (fixed +03:00, no DST) — the owner's "today".
+    const todayStart = new Date(
+      `${new Intl.DateTimeFormat("en-CA", { timeZone: TZ, dateStyle: "short" }).format(new Date())}T00:00:00+03:00`,
+    );
+    const scopeCond =
+      data.scope === "today"
+        ? sql`and c.latest >= ${todayStart.toISOString()}`
+        : data.scope === "older"
+          ? sql`and c.latest < ${todayStart.toISOString()}`
+          : sql``;
 
     const conv = sql`
       select coalesce(cl.session_id, 'legacy-' || cl.id::text) as key,
@@ -325,7 +337,7 @@ export const adminListConversations = createServerFn({ method: "GET" })
           where session_id = c.key
           order by created_at desc limit 1
         ) cm on true
-        where c.matches ${filterCond}
+        where c.matches ${scopeCond} ${filterCond}
         order by ${orderBy}
         limit ${data.limit} offset ${data.offset}`),
       d.execute(sql`
@@ -336,7 +348,7 @@ export const adminListConversations = createServerFn({ method: "GET" })
           count(*) filter (where c.has_unanswered)::int as unanswered,
           count(*)::int as total
         from conv c left join pinned_conversations p on p.key = c.key
-        where c.matches`),
+        where c.matches ${scopeCond}`),
     ]);
 
     const page = pageRes.rows as {
