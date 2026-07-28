@@ -15,6 +15,8 @@ import {
   adminTotpDisable,
   adminTotpEnable,
 } from "@/lib/api/admin-auth.functions";
+import { BorderBeam } from "@/components/lightswind/border-beam";
+import { ShineButton } from "@/components/lightswind/shine-button";
 import { topicOf, visitorLabel } from "@/lib/topics";
 import {
   adminChatSession,
@@ -297,13 +299,13 @@ function LoginCard({ onSuccess }: { onSuccess: () => void }) {
             </p>
           </>
         )}
-        <button
+        <ShineButton
           type="submit"
           disabled={state === "checking" || (step === "password" ? !password : code.length !== 6)}
-          className="mt-4 w-full h-11 rounded-xl bg-black text-white text-sm font-semibold hover:bg-gray-800 active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          className="mt-4 w-full h-11 text-sm"
         >
           {state === "checking" ? "Checking…" : step === "password" ? "Continue" : "Enter dashboard"}
-        </button>
+        </ShineButton>
         {state === "error" && (
           <p className="mt-3 text-xs text-red-600" role="alert">
             That password isn't right. Attempts are rate-limited — wait a minute if it keeps failing.
@@ -525,8 +527,11 @@ function OverviewTab({ stats, go }: { stats: Stats | null; go: (tab: Tab) => voi
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: 0.15 + i * 0.05, ease: EASE }}
-              className={`${glassCard} p-4 text-left cursor-pointer flex items-center gap-3 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12)] transition-all`}
+              className={`${glassCard} relative p-4 text-left cursor-pointer flex items-center gap-3 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12)] transition-all`}
             >
+              {/* Lightswind border beam — a slow luminous sweep that marks
+                  these as the "act on this" cards. */}
+              <BorderBeam colorFrom={a.accent} colorTo={a.accent} duration={7} delay={i * 2.3} opacity={0.8} />
               <span
                 className="w-2 h-2 rounded-full shrink-0 animate-pulse"
                 style={{ background: a.accent }}
@@ -2324,13 +2329,13 @@ function SecurityTab() {
               <span className="block font-mono font-semibold mt-1 select-all">{next}</span>
             </p>
           )}
-          <button
+          <ShineButton
             type="submit"
             disabled={state === "saving" || !current || !next || !confirm}
-            className="h-11 px-6 rounded-full bg-black text-white text-sm font-semibold hover:bg-gray-800 active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="h-11 px-6 text-sm"
           >
             {state === "saving" ? "Changing…" : "Change password"}
-          </button>
+          </ShineButton>
           {state === "saved" && (
             <p className="text-[12px] text-green-600 font-medium" role="status">
               Password changed ✓ — other devices are logged out.
@@ -2449,13 +2454,9 @@ function TotpCard({ enabled, onChanged }: { enabled: boolean; onChanged: () => v
               </button>
             </>
           ) : (
-            <button
-              onClick={begin}
-              disabled={busy}
-              className="h-10 px-5 rounded-full bg-black text-white text-[13px] font-semibold hover:bg-gray-800 transition-colors disabled:opacity-40"
-            >
+            <ShineButton onClick={begin} disabled={busy} className="h-10 px-5 text-[13px]">
               {busy ? "Preparing…" : "Enable 2FA"}
-            </button>
+            </ShineButton>
           )}
           {done && (
             <span className="text-[12px] text-green-600 font-medium" role="status">
@@ -2504,13 +2505,9 @@ function TotpCard({ enabled, onChanged }: { enabled: boolean; onChanged: () => v
                 />
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  type="submit"
-                  disabled={busy || code.length !== 6}
-                  className="h-10 px-5 rounded-full bg-black text-white text-[13px] font-semibold hover:bg-gray-800 transition-colors disabled:opacity-40"
-                >
+                <ShineButton type="submit" disabled={busy || code.length !== 6} className="h-10 px-5 text-[13px]">
                   {busy ? "Verifying…" : "Verify & enable"}
-                </button>
+                </ShineButton>
                 <button
                   type="button"
                   onClick={() => {
@@ -3219,13 +3216,13 @@ function ContentTab({
       {/* Sticky save bar */}
       <div className="sticky bottom-4 z-10">
         <div className={`${glassCard} px-4 py-3 flex items-center gap-3 backdrop-blur-md bg-white/90`}>
-          <button
+          <ShineButton
             onClick={save}
             disabled={state === "saving" || (!dirty && state !== "error")}
-            className="h-11 px-6 rounded-full bg-black text-white text-sm font-semibold hover:bg-gray-800 active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="h-11 px-6 text-sm"
           >
             {state === "saving" ? "Saving…" : "Save changes"}
-          </button>
+          </ShineButton>
           <span className="text-[12px]" role="status" aria-live="polite">
             {state === "saved" && !dirty && <span className="text-green-600 font-medium">Saved ✓ — live on the site now</span>}
             {state === "error" && <span className="text-red-600 font-medium">Save failed — try again.</span>}
