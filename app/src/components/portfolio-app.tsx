@@ -20,6 +20,25 @@ declare global {
   }
 }
 
+// One conversation id per tab visit: kept in sessionStorage so view changes
+// and reloads continue the same thread instead of splitting it.
+function getChatSessionId(): string {
+  const fresh = () =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  if (typeof window === "undefined") return "ssr";
+  try {
+    const existing = window.sessionStorage.getItem("chat-session-id");
+    if (existing) return existing;
+    const id = fresh();
+    window.sessionStorage.setItem("chat-session-id", id);
+    return id;
+  } catch {
+    return fresh();
+  }
+}
+
 function track(name: string, params?: Record<string, string>) {
   if (typeof window !== "undefined") window.gtag?.("event", name, params ?? {});
 }
@@ -171,12 +190,9 @@ export function PortfolioApp({ content }: { content: SiteContent }) {
   // context). Kept in a ref: it's request payload, not render state.
   const chatHistoryRef = useRef<{ role: "user" | "assistant"; content: string }[]>([]);
   // Anonymous conversation id — lets the admin dashboard group a visitor's
-  // exchanges into one conversation. Regenerated when the chat is cleared.
-  const chatSessionRef = useRef<string>(
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
+  // exchanges into one conversation. One id per tab visit (sessionStorage),
+  // so navigating between views or reloading doesn't split the thread.
+  const chatSessionRef = useRef<string>(getChatSessionId());
   const inputRef = useRef<HTMLInputElement>(null);
   // Desktop = precise hovering pointer. On touch devices the fluid cursor has
   // nothing to follow and only burns GPU/memory. (Component is client-only.)
@@ -339,13 +355,8 @@ export function PortfolioApp({ content }: { content: SiteContent }) {
   const handleNavClick = (v: View) => {
     setView(v);
     setShowChat(false);
-    setMessages([]);
-    chatHistoryRef.current = [];
-    // New conversation for the next chat.
-    chatSessionRef.current =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    // Keep messages, history, and the session id: coming back to the chat
+    // continues the same conversation instead of starting a fragment.
     setInput("");
     trackVirtualPage(v === "me" ? "/" : `/${v}`, v);
   };
