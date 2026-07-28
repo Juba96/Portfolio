@@ -16,6 +16,7 @@ import {
   adminTotpEnable,
 } from "@/lib/api/admin-auth.functions";
 import { BorderBeam } from "@/components/lightswind/border-beam";
+import { CountUp } from "@/components/lightswind/count-up";
 import { ExpandableSearchBar } from "@/components/lightswind/expandable-search-bar";
 import { ShineButton } from "@/components/lightswind/shine-button";
 import { topicOf, visitorLabel } from "@/lib/topics";
@@ -521,7 +522,12 @@ function OverviewTab({ stats, go }: { stats: Stats | null; go: (tab: Tab) => voi
             className={`${glassCard} p-4 text-left cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12)] transition-all`}
           >
             {stats ? (
-              <p className="text-[26px] font-black tracking-tight leading-none tabular-nums">{c.value}</p>
+              <CountUp
+                value={c.value}
+                duration={1.4}
+                triggerOnView={false}
+                className="text-[26px] font-black tracking-tight leading-none tabular-nums justify-start"
+              />
             ) : (
               <Skeleton className="h-7 w-10" />
             )}
