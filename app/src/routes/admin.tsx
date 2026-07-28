@@ -154,14 +154,16 @@ function AdminPage() {
   }, []);
 
   return (
-    <div className="relative h-dvh w-full overflow-y-auto bg-white text-black">
+    // z-0 makes the wrapper a stacking context so the zIndex:-1 particles
+    // paint above its white background instead of being hidden behind it.
+    <div className="relative z-0 h-dvh w-full overflow-y-auto bg-white text-black">
       {/* Lightswind ambient particle field, behind everything. */}
       <ParticlesBackground
-        colors={["#c4b5fd", "#fcd34d", "#99f6e4", "#fbcfe8"]}
-        size={3}
-        countDesktop={45}
-        countTablet={35}
-        countMobile={22}
+        colors={["#8b5cf6", "#f59e0b", "#14b8a6", "#ec4899"]}
+        size={5}
+        countDesktop={60}
+        countTablet={45}
+        countMobile={28}
         zIndex={-1}
         height="100vh"
       />
