@@ -16,6 +16,7 @@ import {
   adminTotpEnable,
 } from "@/lib/api/admin-auth.functions";
 import { BorderBeam } from "@/components/lightswind/border-beam";
+import { ExpandableSearchBar } from "@/components/lightswind/expandable-search-bar";
 import { ShineButton } from "@/components/lightswind/shine-button";
 import { topicOf, visitorLabel } from "@/lib/topics";
 import {
@@ -1149,28 +1150,12 @@ function LeadsTab({
     <div className="space-y-3">
       {/* Toolbar: search + status + source filters */}
       <div className={`${glassCard} p-3 flex flex-wrap items-center gap-2`}>
-        <div className="relative flex-1 min-w-[180px]">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-            aria-hidden
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path d="m20 20-3.5-3.5" />
-          </svg>
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search name, email, or message…"
-            aria-label="Search leads"
-            className="w-full h-9 rounded-full border border-black/10 bg-white pl-9 pr-3.5 text-[13px] placeholder:text-gray-400 focus:outline-none focus:border-black/30 focus:ring-2 focus:ring-black/5 transition-all"
-          />
-        </div>
+        <ExpandableSearchBar
+          value={query}
+          onChange={setQuery}
+          placeholder="Search name, email, or message…"
+          expandedWidth="17rem"
+        />
         {view === "list" && (
           <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Filter by status">
             {(["all", ...Object.keys(STATUS_META)] as ("all" | keyof typeof STATUS_META)[]).map((s) => (
@@ -1474,7 +1459,6 @@ function ChatsTab({
   const [scope, setScope] = useState<"today" | "older" | "all">("today");
   const [query, setQuery] = useState("");
   const [q, setQ] = useState(""); // debounced
-  const [searchOpen, setSearchOpen] = useState(false);
   // Inbox layout: which thread is open. null = none chosen explicitly
   // (desktop falls back to the first in the list; mobile shows the list).
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -1683,66 +1667,12 @@ function ChatsTab({
     <div>
       {/* Toolbar: search (collapsed to an icon), triage chips, time scope */}
       <div className={`${glassCard} p-3 flex flex-wrap items-center gap-2 mb-4`}>
-        {searchOpen || query ? (
-          <div className="relative flex-1 min-w-[200px] max-w-md">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-              aria-hidden
-            >
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-3.5-3.5" />
-            </svg>
-            <input
-              type="search"
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onBlur={() => {
-                if (!query.trim()) setSearchOpen(false);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  setQuery("");
-                  setSearchOpen(false);
-                }
-              }}
-              placeholder="Search questions and answers…"
-              aria-label="Search conversations"
-              className="w-full h-9 rounded-full border border-black/10 bg-white pl-9 pr-8 text-[13px] placeholder:text-gray-400 focus:outline-none focus:border-black/30 focus:ring-2 focus:ring-black/5 transition-all"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => {
-                  setQuery("");
-                  setSearchOpen(false);
-                }}
-                aria-label="Clear search"
-                className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-gray-100 text-gray-500 hover:text-black text-[11px] leading-none flex items-center justify-center cursor-pointer"
-              >
-                ×
-              </button>
-            )}
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setSearchOpen(true)}
-            aria-label="Search conversations"
-            title="Search all conversation history"
-            className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:text-black transition-colors cursor-pointer shrink-0"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-4 h-4" aria-hidden>
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-3.5-3.5" />
-            </svg>
-          </button>
-        )}
+        <ExpandableSearchBar
+          value={query}
+          onChange={setQuery}
+          placeholder="Search questions and answers…"
+          expandedWidth="16rem"
+        />
 
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Conversation filters">
           {FILTERS.map((f) => (
