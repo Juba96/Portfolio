@@ -1469,16 +1469,23 @@ function ChatsTab({
   const [scope, setScope] = useState<"today" | "older" | "all">("today");
   const [query, setQuery] = useState("");
   const [q, setQ] = useState(""); // debounced
-  const [sort, setSort] = useState<"priority" | "newest">("priority");
+  const [searchOpen, setSearchOpen] = useState(false);
   // Inbox layout: which thread is open. null = none chosen explicitly
   // (desktop falls back to the first in the list; mobile shows the list).
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [busyMore, setBusyMore] = useState(false);
   const [landed, setLanded] = useState(false);
 
+  // The right data at the right time, without a sort toggle:
+  // - searching → all history, newest first
+  // - triage filters (leads/starred/gaps) → priority order
+  // - browsing All → chronological with date sections
+  const effectiveScope = q ? "all" : scope;
+  const sort: "priority" | "newest" = q || filter === "all" ? "newest" : "priority";
+
   useEffect(() => {
     setSelectedKey(null);
-  }, [q, filter, scope, sort]);
+  }, [q, filter, scope]);
 
   useEffect(() => {
     const t = setTimeout(() => setQ(query.trim()), 300);
@@ -1506,7 +1513,7 @@ function ChatsTab({
   const fetchFirstPage = (silent = false) => {
     if (!silent) setRefreshing(true);
     return adminListConversations({
-      data: { q: q || undefined, filter, scope, sort, limit: CHAT_PAGE, offset: 0 },
+      data: { q: q || undefined, filter, scope: effectiveScope, sort, limit: CHAT_PAGE, offset: 0 },
     })
       .then((r) => {
         setMeta(r.page);
@@ -1525,7 +1532,7 @@ function ChatsTab({
   useEffect(() => {
     fetchFirstPage(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, filter, scope, sort]);
+  }, [q, filter, scope]);
 
   // Live-ish inbox: re-fetch the first page every 30s while the tab is
   // visible, so new visitor conversations appear without a manual reload.
@@ -1538,7 +1545,7 @@ function ChatsTab({
     }, 30_000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, filter, scope, sort]);
+  }, [q, filter, scope]);
 
   const togglePin = (key: string) => {
     const wasPinned = meta?.find((c) => c.key === key)?.pinned ?? false;
@@ -1580,7 +1587,14 @@ function ChatsTab({
     setBusyMore(true);
     try {
       const r = await adminListConversations({
-        data: { q: q || undefined, filter, scope, sort, limit: CHAT_PAGE, offset: meta.length },
+        data: {
+          q: q || undefined,
+          filter,
+          scope: effectiveScope,
+          sort,
+          limit: CHAT_PAGE,
+          offset: meta.length,
+        },
       });
       setMeta((prev) => [...(prev ?? []), ...r.page]);
       setCounts(r.counts);
@@ -1639,59 +1653,92 @@ function ChatsTab({
     };
   });
 
-  const FILTERS: { id: ChatFilter; label: string; count: number }[] = [
-    { id: "important", label: "Important", count: counts.important },
-    { id: "starred", label: "Starred", count: counts.starred },
-    { id: "unanswered", label: "Couldn't answer", count: counts.unanswered },
-    { id: "all", label: "All", count: counts.total },
-  ];
+  // Chips that earn their place: zero-count triage chips are hidden (unless
+  // active), "All" is always there. Counts are color-coded by urgency.
+  const FILTERS = (
+    [
+      { id: "all", label: "All", count: counts.total, countCls: "bg-white text-gray-500" },
+    {
+      id: "unanswered",
+      label: "Couldn't answer",
+      count: counts.unanswered,
+      countCls: "bg-red-100 text-red-600",
+    },
+    {
+      id: "important",
+      label: "Leads & clients",
+      count: counts.important,
+      countCls: "bg-green-100 text-green-700",
+    },
+      { id: "starred", label: "Starred", count: counts.starred, countCls: "bg-amber-100 text-amber-700" },
+    ] as { id: ChatFilter; label: string; count: number; countCls: string }[]
+  ).filter((f) => f.id === "all" || f.count > 0 || filter === f.id);
 
   return (
     <div>
-      {/* Toolbar: search + filters + sort */}
+      {/* Toolbar: search (collapsed to an icon), triage chips, time scope */}
       <div className={`${glassCard} p-3 flex flex-wrap items-center gap-2 mb-4`}>
-        <div className="relative flex-1 min-w-[180px]">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-            aria-hidden
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path d="m20 20-3.5-3.5" />
-          </svg>
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search questions and answers…"
-            aria-label="Search conversations"
-            className="w-full h-9 rounded-full border border-black/10 bg-white pl-9 pr-3.5 text-[13px] placeholder:text-gray-400 focus:outline-none focus:border-black/30 focus:ring-2 focus:ring-black/5 transition-all"
-          />
-        </div>
-        <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Time scope">
-          {(
-            [
-              ["today", "Today"],
-              ["older", "Older"],
-              ["all", "All time"],
-            ] as const
-          ).map(([s, label]) => (
-            <button
-              key={s}
-              onClick={() => setScope(s)}
-              aria-pressed={scope === s}
-              className={`h-8 px-3 rounded-full text-[11px] font-semibold transition-all active:scale-[0.97] cursor-pointer ${
-                scope === s ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"
-              }`}
+        {searchOpen || query ? (
+          <div className="relative flex-1 min-w-[200px] max-w-md">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+              aria-hidden
             >
-              {label}
-            </button>
-          ))}
-        </div>
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input
+              type="search"
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onBlur={() => {
+                if (!query.trim()) setSearchOpen(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setQuery("");
+                  setSearchOpen(false);
+                }
+              }}
+              placeholder="Search questions and answers…"
+              aria-label="Search conversations"
+              className="w-full h-9 rounded-full border border-black/10 bg-white pl-9 pr-8 text-[13px] placeholder:text-gray-400 focus:outline-none focus:border-black/30 focus:ring-2 focus:ring-black/5 transition-all"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  setSearchOpen(false);
+                }}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-gray-100 text-gray-500 hover:text-black text-[11px] leading-none flex items-center justify-center cursor-pointer"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            aria-label="Search conversations"
+            title="Search all conversation history"
+            className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:text-black transition-colors cursor-pointer shrink-0"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-4 h-4" aria-hidden>
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+          </button>
+        )}
+
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Conversation filters">
           {FILTERS.map((f) => (
             <button
@@ -1705,7 +1752,7 @@ function ChatsTab({
               {f.label}
               <span
                 className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
-                  filter === f.id ? "bg-white/20 text-white" : "bg-white text-gray-500"
+                  filter === f.id ? "bg-white/20 text-white" : f.countCls
                 }`}
               >
                 {f.count}
@@ -1713,24 +1760,34 @@ function ChatsTab({
             </button>
           ))}
         </div>
-        <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Sort conversations">
-          {(
-            [
-              ["priority", "Priority"],
-              ["newest", "Newest"],
-            ] as const
-          ).map(([s, label]) => (
-            <button
-              key={s}
-              onClick={() => setSort(s)}
-              aria-pressed={sort === s}
-              className={`h-8 px-3 rounded-full text-[11px] font-semibold transition-all active:scale-[0.97] cursor-pointer ${
-                sort === s ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+
+        <div className="ml-auto flex items-center gap-2">
+          {q ? (
+            <span className="h-8 px-3 rounded-full bg-blue-50 text-blue-700 border border-blue-100 text-[11px] font-semibold inline-flex items-center">
+              Searching all history
+            </span>
+          ) : (
+            <div className="inline-flex rounded-full bg-gray-100 p-0.5" role="group" aria-label="Time scope">
+              {(
+                [
+                  ["today", "Today"],
+                  ["older", "Older"],
+                  ["all", "All time"],
+                ] as const
+              ).map(([s, label]) => (
+                <button
+                  key={s}
+                  onClick={() => setScope(s)}
+                  aria-pressed={scope === s}
+                  className={`h-8 px-3 rounded-full text-[11px] font-semibold transition-all active:scale-[0.97] cursor-pointer ${
+                    scope === s ? "bg-black text-white" : "text-gray-500 hover:text-gray-800"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <button
           type="button"
