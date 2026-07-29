@@ -10,9 +10,7 @@ export function applySecurityHeaders(response: Response): Response {
   headers.set(
     'Content-Security-Policy',
     "default-src 'self'; " +
-      // cdn.jsdelivr.net: particles.js loaded by the Lightswind
-      // ParticlesBackground on /admin (pinned 2.0.0 path).
-      "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://cdn.jsdelivr.net; " +
+      "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; " +
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
       "font-src 'self' https://fonts.gstatic.com; " +
       "img-src 'self' data: https:; media-src 'self' https:; " +

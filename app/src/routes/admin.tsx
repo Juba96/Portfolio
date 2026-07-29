@@ -15,7 +15,7 @@ import {
   adminTotpDisable,
   adminTotpEnable,
 } from "@/lib/api/admin-auth.functions";
-import ParticlesBackground from "@/components/lightswind/particles-background";
+import FallBeamBackground from "@/components/lightswind/fall-beam-background";
 import { BorderBeam } from "@/components/lightswind/border-beam";
 import { CountUp } from "@/components/lightswind/count-up";
 import { ExpandableSearchBar } from "@/components/lightswind/expandable-search-bar";
@@ -157,15 +157,12 @@ function AdminPage() {
     // z-0 makes the wrapper a stacking context so the zIndex:-1 particles
     // paint above its white background instead of being hidden behind it.
     <div className="relative z-0 h-dvh w-full overflow-y-auto bg-white text-black">
-      {/* Lightswind ambient particle field, behind everything. */}
-      <ParticlesBackground
-        colors={["#8b5cf6", "#f59e0b", "#14b8a6", "#ec4899"]}
-        size={5}
-        countDesktop={60}
-        countTablet={45}
-        countMobile={28}
-        zIndex={-1}
-        height="100vh"
+      {/* Lightswind falling-beam ambience, behind everything (usage per the
+          library's className-override example). */}
+      <FallBeamBackground
+        lineCount={18}
+        beamColorClass="indigo-400"
+        className="!-z-10 pointer-events-none"
       />
       <div className="mx-auto max-w-4xl px-4 md:px-6 py-6 md:py-10 pb-24">
         {phase === "loading" && <PageSkeleton />}
