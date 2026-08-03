@@ -12,7 +12,6 @@
         "@higgsfield/quanta": "workspace:*",
         "@hookform/resolvers": "^5.2.2",
         "@material-symbols/svg-400": "^0.45.5",
-        "@neondatabase/serverless": "^1.1.0",
         "@node-rs/argon2": "^2.0.2",
         "@number-flow/react": "^0.6.1",
         "@radix-ui/react-accordion": "^1.2.12",
@@ -67,6 +66,7 @@
         "motion": "^12.42.2",
         "otpauth": "^9.5.1",
         "pdf-lib": "^1.17.1",
+        "postgres": "^3.4.9",
         "postprocessing": "^6.39.2",
         "qrcode": "^1.5.4",
         "react": "^19.2.0",
@@ -1658,6 +1658,8 @@
     "pngjs": ["pngjs@5.0.0", "", {}, "sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw=="],
 
     "postcss": ["postcss@8.5.16", "", { "dependencies": { "nanoid": "^3.3.12", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-vuwillviilfKZsg0VGj5R/YwwcHx4SLsIOI/7K6mQkWx+l5cUHTjj5g0AasTBcyXsbfTgrwsUNmVUb5xVwyPwg=="],
+
+    "postgres": ["postgres@3.4.9", "", {}, "sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw=="],
 
     "postprocessing": ["postprocessing@6.39.2", "", { "peerDependencies": { "three": ">= 0.168.0 < 0.186.0" } }, "sha512-AxPY+xFyVOsz+8bbHSyQBoOK4AUqSQspTXXIsNcKhmGJRm/afHRAwZ8bKC02AeSPII0PW6lbCN84SgAoWFsKKA=="],
 

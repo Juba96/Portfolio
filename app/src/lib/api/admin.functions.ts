@@ -351,7 +351,7 @@ export const adminListConversations = createServerFn({ method: "GET" })
         where c.matches ${scopeCond}`),
     ]);
 
-    const page = pageRes.rows as {
+    const page = pageRes as unknown as {
       key: string;
       latest: string;
       exchange_count: number;
@@ -363,7 +363,7 @@ export const adminListConversations = createServerFn({ method: "GET" })
       lead_id: number | null;
       lead_name: string | null;
     }[];
-    const counts = (countsRes.rows[0] ?? { important: 0, starred: 0, unanswered: 0, total: 0 }) as {
+    const counts = (countsRes[0] ?? { important: 0, starred: 0, unanswered: 0, total: 0 }) as {
       important: number;
       starred: number;
       unanswered: number;
