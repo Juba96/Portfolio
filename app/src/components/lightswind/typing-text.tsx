@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion, Variants } from "framer-motion";
+import { motion, Variants } from "framer-motion";
 import React, {
   ElementType,
   ReactNode,
@@ -73,15 +73,18 @@ export const TypingText = ({
     char === " " ? " " : char
   );
 
+  // Long, overlapping per-character fades (rise + blur-in) read as one smooth
+  // wave; the upstream 0.3s pop-in looks steppy at small sizes.
   const characterVariants: Variants = {
-    hidden: { opacity: 0, scale: 0.95 },
+    hidden: { opacity: 0, y: 4, filter: "blur(4px)" },
     visible: (i: number) => ({
       opacity: 1,
-      scale: 1,
+      y: 0,
+      filter: "blur(0px)",
       transition: {
         delay: delay + i * (duration / characters.length),
-        duration: 0.3,
-        ease: "easeInOut",
+        duration: 0.55,
+        ease: "easeOut",
       },
     }),
   };
@@ -103,29 +106,26 @@ export const TypingText = ({
           : "justify-start text-left"
       ),
     },
-    <AnimatePresence mode="wait">
-      <motion.span
-        key={cycle}
-        className="inline-block"
-        initial="hidden"
-        animate="visible"
-        exit={{ opacity: 0, transition: { duration: 0.6, ease: "easeOut" } }}
-        aria-label={textContent}
-        role="text"
-      >
-        {characters.map((char, index) => (
-          <motion.span
-            key={`${char}-${index}`}
-            className="inline-block"
-            variants={characterVariants}
-            custom={index}
-            initial="hidden"
-            animate="visible"
-          >
-            {char}
-          </motion.span>
-        ))}
-      </motion.span>
-    </AnimatePresence>
+    <motion.span
+      key={cycle}
+      className="inline-block"
+      initial="hidden"
+      animate="visible"
+      aria-label={textContent}
+      role="text"
+    >
+      {characters.map((char, index) => (
+        <motion.span
+          key={`${char}-${index}`}
+          className="inline-block"
+          variants={characterVariants}
+          custom={index}
+          initial="hidden"
+          animate="visible"
+        >
+          {char}
+        </motion.span>
+      ))}
+    </motion.span>
   );
 };
