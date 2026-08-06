@@ -6,7 +6,7 @@ import SmokeyCursor from "./lightswind/smokey-cursor";
 import { Iphone16Pro } from "./lightswind/iphone16-pro";
 import { FluidActionPanel } from "./lightswind/fluid-action-panel";
 import { BorderBeam } from "./lightswind/border-beam";
-import { AuroraTextEffect } from "./lightswind/aurora-text-effect";
+import { TypingText } from "./lightswind/typing-text";
 import { askPortfolioChat } from "@/lib/api/chat.functions";
 import { submitLead } from "@/lib/api/leads.functions";
 import type { Project, SiteContent } from "@/content/schema";
@@ -545,17 +545,32 @@ export function PortfolioApp({ content }: { content: SiteContent }) {
               aria-label="Ask me anything"
               className="liquid-glass w-full rounded-full px-4 md:px-5 py-2.5 md:py-3.5 pr-12 md:pr-14 text-base md:text-sm placeholder:text-gray-400 focus:outline-none transition-all duration-300"
             />
-            {/* Aurora placeholder — native placeholders are plain text only, so
-                this overlay stands in while the input is empty. */}
+            {/* Aurora typing placeholder — native placeholders are plain text
+                only, so this overlay stands in while the input is empty. It
+                retypes each time the field is cleared (remounts on !input).
+                The aurora gradient is clipped to the typed letters. */}
             {!input && (
               <div className="pointer-events-none absolute inset-y-0 left-4 md:left-5 flex items-center text-base md:text-sm">
-                <AuroraTextEffect
-                  text="Ask me anything..."
-                  fontSize="1em"
-                  textClassName="font-normal tracking-normal"
-                  clipText
-                  gradientColors={["#22d3ee", "#facc15", "#4ade80", "#a855f7"]}
-                />
+                <style>{`
+                  @keyframes aurora-pan {
+                    0% { background-position: 0% 50%; }
+                    50% { background-position: 100% 50%; }
+                    100% { background-position: 0% 50%; }
+                  }
+                `}</style>
+                <TypingText
+                  as="span"
+                  loop
+                  delay={0.3}
+                  duration={1.5}
+                  fontSize="text-[1em]"
+                  fontWeight="font-normal"
+                  color="text-transparent"
+                  letterSpacing="tracking-normal"
+                  className="bg-[linear-gradient(90deg,#22d3ee,#facc15,#4ade80,#a855f7,#22d3ee)] [background-size:300%_100%] bg-clip-text [animation:aurora-pan_10s_ease-in-out_infinite]"
+                >
+                  Ask me anything...
+                </TypingText>
               </div>
             )}
             {/* Two counter-phased rainbow beams tracing the pill border. */}
