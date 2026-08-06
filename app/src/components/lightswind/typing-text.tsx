@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, Variants } from "framer-motion";
+import { AnimatePresence, motion, Variants } from "framer-motion";
 import React, {
   ElementType,
   ReactNode,
@@ -103,26 +103,29 @@ export const TypingText = ({
           : "justify-start text-left"
       ),
     },
-    <motion.span
-      key={cycle}
-      className="inline-block"
-      initial="hidden"
-      animate="visible"
-      aria-label={textContent}
-      role="text"
-    >
-      {characters.map((char, index) => (
-        <motion.span
-          key={`${char}-${index}`}
-          className="inline-block"
-          variants={characterVariants}
-          custom={index}
-          initial="hidden"
-          animate="visible"
-        >
-          {char}
-        </motion.span>
-      ))}
-    </motion.span>
+    <AnimatePresence mode="wait">
+      <motion.span
+        key={cycle}
+        className="inline-block"
+        initial="hidden"
+        animate="visible"
+        exit={{ opacity: 0, transition: { duration: 0.6, ease: "easeOut" } }}
+        aria-label={textContent}
+        role="text"
+      >
+        {characters.map((char, index) => (
+          <motion.span
+            key={`${char}-${index}`}
+            className="inline-block"
+            variants={characterVariants}
+            custom={index}
+            initial="hidden"
+            animate="visible"
+          >
+            {char}
+          </motion.span>
+        ))}
+      </motion.span>
+    </AnimatePresence>
   );
 };
