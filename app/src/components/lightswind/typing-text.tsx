@@ -37,9 +37,6 @@ export const TypingText = ({
   loop = false,
 }: TypingTextProps) => {
   const [textContent, setTextContent] = useState<string>("");
-  // The upstream component declares `loop` but never implements it: remount
-  // the character spans each cycle so the reveal starts over.
-  const [cycle, setCycle] = useState(0);
 
   useEffect(() => {
     const extractText = (node: ReactNode): string => {
@@ -61,30 +58,19 @@ export const TypingText = ({
     setTextContent(extractText(children));
   }, [children]);
 
-  useEffect(() => {
-    if (!loop || !textContent) return;
-    // typing window + the last char's 0.3s fade + a hold before restarting
-    const totalMs = (delay + duration + 0.3 + 1.2) * 1000;
-    const timer = setTimeout(() => setCycle((c) => c + 1), totalMs);
-    return () => clearTimeout(timer);
-  }, [loop, cycle, textContent, delay, duration]);
-
   const characters = textContent.split("").map((char) =>
     char === " " ? " " : char
   );
 
-  // Long, overlapping per-character fades (rise + blur-in) read as one smooth
-  // wave; the upstream 0.3s pop-in looks steppy at small sizes.
   const characterVariants: Variants = {
-    hidden: { opacity: 0, y: 4, filter: "blur(4px)" },
+    hidden: { opacity: 0, scale: 0.95 },
     visible: (i: number) => ({
       opacity: 1,
-      y: 0,
-      filter: "blur(0px)",
+      scale: 1,
       transition: {
         delay: delay + i * (duration / characters.length),
-        duration: 0.55,
-        ease: "easeOut",
+        duration: 0.3,
+        ease: "easeInOut",
       },
     }),
   };
@@ -107,7 +93,6 @@ export const TypingText = ({
       ),
     },
     <motion.span
-      key={cycle}
       className="inline-block"
       initial="hidden"
       animate="visible"

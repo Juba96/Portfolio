@@ -5,6 +5,7 @@ import { motion, AnimatePresence, useAnimationControls } from "motion/react";
 import SmokeyCursor from "./lightswind/smokey-cursor";
 import { Iphone16Pro } from "./lightswind/iphone16-pro";
 import { FluidActionPanel } from "./lightswind/fluid-action-panel";
+import { BorderBeam } from "./lightswind/border-beam";
 import { TypingText } from "./lightswind/typing-text";
 import { askPortfolioChat } from "@/lib/api/chat.functions";
 import { submitLead } from "@/lib/api/leads.functions";
@@ -535,7 +536,7 @@ export function PortfolioApp({ content }: { content: SiteContent }) {
           transition={{ duration: 0.5, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
           className="max-w-sm sm:max-w-md mx-auto"
         >
-          <div className="relative">
+          <div className="relative rounded-full">
             <input
               ref={inputRef}
               type="text"
@@ -571,6 +572,26 @@ export function PortfolioApp({ content }: { content: SiteContent }) {
                 </TypingText>
               </div>
             )}
+            {/* Two counter-phased rainbow beams tracing the pill border. */}
+            <BorderBeam
+              size={64}
+              duration={7}
+              beamBorderRadius={26}
+              borderThickness={2}
+              colorFrom="#ff2daf"
+              glowIntensity={2}
+              style={{ backgroundImage: "linear-gradient(to left, #ff2daf, #ff8a00, #ffd60a, transparent)" }}
+            />
+            <BorderBeam
+              size={64}
+              duration={7}
+              delay={3.5}
+              beamBorderRadius={26}
+              borderThickness={2}
+              colorFrom="#22d3ee"
+              glowIntensity={2}
+              style={{ backgroundImage: "linear-gradient(to left, #22d3ee, #7b5bff, #34d399, transparent)" }}
+            />
             <button
               type="submit"
               disabled={!input.trim()}
