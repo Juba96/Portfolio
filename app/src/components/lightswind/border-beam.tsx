@@ -99,13 +99,12 @@ export const BorderBeam = ({
     : undefined;
 
   return (
- <div className="pointer-events-none absolute inset-0 rounded-[inherit] 
-    border border-transparent [mask-clip:padding-box,border-box] 
+ <div className="pointer-events-none absolute inset-0 rounded-[inherit]
+    border border-transparent [mask-clip:padding-box,border-box]
     [mask-composite:intersect] [mask-image:linear-gradient(transparent,transparent),linear-gradient(#000,#000)]"
- 
-      // style={{ 
-      //   borderWidth: `${borderThickness}px`,
-      // }}
+      style={{
+        borderWidth: `${borderThickness}px`,
+      }}
     >
       <motion.div
         className={cn(
