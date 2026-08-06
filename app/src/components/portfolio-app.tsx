@@ -6,7 +6,6 @@ import SmokeyCursor from "./lightswind/smokey-cursor";
 import { Iphone16Pro } from "./lightswind/iphone16-pro";
 import { FluidActionPanel } from "./lightswind/fluid-action-panel";
 import { BorderBeam } from "./lightswind/border-beam";
-import { GradientButton } from "./lightswind/gradient-button";
 import { AuroraTextEffect } from "./lightswind/aurora-text-effect";
 import { askPortfolioChat } from "@/lib/api/chat.functions";
 import { submitLead } from "@/lib/api/leads.functions";
@@ -579,18 +578,16 @@ export function PortfolioApp({ content }: { content: SiteContent }) {
               glowIntensity={2}
               style={{ backgroundImage: "linear-gradient(to left, #22d3ee, #7b5bff, #34d399, transparent)" }}
             />
-            <GradientButton
+            <button
               type="submit"
               disabled={!input.trim()}
-              size="sm"
-              glowSize={2}
-              className="!absolute right-1.5 top-1/2 -translate-y-1/2 !p-0 w-8 h-8 md:w-9 md:h-9 disabled:opacity-30 hover:scale-105 active:scale-95 transition-all duration-200"
+              className="liquid-glass-dark absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 md:w-9 md:h-9 rounded-full text-white flex items-center justify-center disabled:opacity-30 hover:scale-105 active:scale-95 transition-all duration-200"
               aria-label="Send"
             >
               <svg className="w-3.5 h-3.5 md:w-4 md:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
               </svg>
-            </GradientButton>
+            </button>
           </div>
         </motion.form>
 
