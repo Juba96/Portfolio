@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { db, schema } from "@/db";
 import { getSiteContent } from "./content.server";
-import { sendAutoReply } from "./email.server";
+import { sendAutoReply, sendLeadNotification } from "./email.server";
 import { checkChatRequest } from "./rate-limit";
 
 // Public contact-form submission → a lead in contact_messages (source 'form').
@@ -25,7 +25,10 @@ export const submitLead = createServerFn({ method: "POST" })
       .values({ ...data, source: "form" })
       .returning({ id: schema.contactMessages.id });
 
-    // Automated thank-you (no-op without RESEND_API_KEY / when toggled off).
-    void sendAutoReply({ id: row.id, name: data.name, email: data.email }, await getSiteContent());
+    // Automated thank-you (no-op without RESEND_API_KEY / when toggled off)
+    // plus a new-lead notification to the owner. Both fire-and-forget.
+    const content = await getSiteContent();
+    void sendAutoReply({ id: row.id, name: data.name, email: data.email }, content);
+    void sendLeadNotification({ ...data, source: "form" }, content);
     return { ok: true };
   });

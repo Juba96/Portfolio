@@ -51,3 +51,38 @@ export async function sendAutoReply(
     console.error("auto-reply error", error);
   }
 }
+
+// New-lead notification to the site owner (content.contact.email), so leads
+// can be followed up without checking the admin panel. Dormant without
+// RESEND_API_KEY, independent of the auto-reply toggle. Reply-to is the lead,
+// so replying from the inbox answers them directly.
+export async function sendLeadNotification(
+  lead: { name: string; email: string; message: string; source: string },
+  content: SiteContent,
+): Promise<void> {
+  try {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) return;
+
+    const sourceLabel = lead.source === "chat" ? "AI chat" : "contact form";
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from: FROM,
+        to: [content.contact.email],
+        reply_to: lead.email,
+        subject: `New lead: ${lead.name} — ${lead.email}`,
+        text: `New lead from the portfolio ${sourceLabel}.\n\nName: ${lead.name}\nEmail: ${lead.email}\n\nMessage:\n${lead.message}\n\nReply to this email to answer them directly, or manage leads at https://taha.qaysariya.com/admin`,
+      }),
+    });
+    if (!res.ok) {
+      console.error("lead notification send failed", res.status, await res.text());
+    }
+  } catch (error) {
+    console.error("lead notification error", error);
+  }
+}
