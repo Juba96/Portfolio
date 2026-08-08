@@ -3,7 +3,7 @@ import { and, eq, gt } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { ChatTurn } from "./chat-prompt";
 import { getSiteContent } from "./content.server";
-import { sendAutoReply, sendLeadNotification } from "./email.server";
+import { handleNewLead } from "./email.server";
 
 // Post-processing for chat exchanges: transcript logging and in-chat lead
 // capture. Everything here is fire-and-forget — errors are logged and
@@ -93,13 +93,10 @@ export async function captureChatLead(messages: ChatTurn[], sessionId?: string) 
       })
       .returning({ id: schema.contactMessages.id });
 
-    // Automated thank-you (no-op without RESEND_API_KEY / when toggled off)
-    // plus a new-lead notification to the owner. Both fire-and-forget.
-    const content = await getSiteContent();
-    void sendAutoReply({ id: row.id, name: "Chat visitor", email }, content);
-    void sendLeadNotification(
-      { name: "Chat visitor", email, message: context.slice(0, 4000), source: "chat" },
-      content,
+    // Thank-you to the lead + threaded owner notification, fire-and-forget.
+    void handleNewLead(
+      { id: row.id, name: "Chat visitor", email, message: context.slice(0, 4000), source: "chat" },
+      await getSiteContent(),
     );
   } catch (error) {
     console.error("chat lead capture failed", error);
